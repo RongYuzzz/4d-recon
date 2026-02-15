@@ -1,0 +1,30 @@
+# OS / editor
+.DS_Store
+*.swp
+
+# Python caches
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Environments
+**/.venv/
+.env
+.env.*
+
+# Build / package artifacts
+**/*.egg-info/
+
+# Local data and outputs (keep directory placeholders)
+data/*
+!data/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Logs / temp
+*.log
+*.tmp
+
+# Local third-party archives
+third_party/*.tar.gz
