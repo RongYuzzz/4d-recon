@@ -28,3 +28,6 @@ outputs/*
 
 # Local third-party archives
 third_party/*.tar.gz
+
+# Local git worktrees
+.worktrees/
