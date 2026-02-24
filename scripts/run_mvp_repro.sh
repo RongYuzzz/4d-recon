@@ -13,9 +13,10 @@ Options:
   --keyframe-step <n>       Keyframe step for Gate-0 smoke (default: 5)
   --gate0-data-dir <path>   Gate-0 dataset root, needs triangulation/ (default: data/4DGV_DeskGames)
   --result-root <path>      Output root for Gate-0 smoke (default: outputs/gate0_real_smoke)
-  --selfcap-tar <path>      SelfCap release tar path (auto-detect when omitted)
+  --selfcap-tar <path>      SelfCap release tar path (default: data/selfcap/bar-release.tar.gz)
+  --selfcap-out-dir <path>  SelfCap adapter output dir (default: data/selfcap_bar_8cam60f)
   --adapter-script <path>   SelfCap adapter script (default: scripts/adapt_selfcap_release_to_freetime.py)
-  --adapter-cmd <cmd>       Full adapter command to execute when adapter+tar exist
+  --adapter-cmd <cmd>       Optional full adapter command override
   --skip-gate0              Skip Gate-0 smoke even if data exists
   --skip-selfcap-adapter    Skip SelfCap adapter stage
   --dry-run                 Print commands without executing
@@ -31,7 +32,8 @@ END_FRAME=60
 KEYFRAME_STEP=5
 GATE0_DATA_DIR="data/4DGV_DeskGames"
 RESULT_ROOT="outputs/gate0_real_smoke"
-SELFCAP_TAR=""
+SELFCAP_TAR="data/selfcap/bar-release.tar.gz"
+SELFCAP_OUT_DIR="data/selfcap_bar_8cam60f"
 ADAPTER_SCRIPT="scripts/adapt_selfcap_release_to_freetime.py"
 ADAPTER_CMD=""
 RUN_GATE0=1
@@ -57,6 +59,8 @@ while [[ $# -gt 0 ]]; do
       RESULT_ROOT="$2"; shift 2 ;;
     --selfcap-tar)
       SELFCAP_TAR="$2"; SELFCAP_TAR_USER_SET=1; shift 2 ;;
+    --selfcap-out-dir)
+      SELFCAP_OUT_DIR="$2"; shift 2 ;;
     --adapter-script)
       ADAPTER_SCRIPT="$2"; shift 2 ;;
     --adapter-cmd)
@@ -95,10 +99,9 @@ require_file() {
 cd "$ROOT_DIR"
 require_file "scripts/build_report_pack.py"
 
-if [[ "$SELFCAP_TAR_USER_SET" -eq 0 ]]; then
+if [[ "$SELFCAP_TAR_USER_SET" -eq 0 && ! -f "$SELFCAP_TAR" ]]; then
   for candidate in \
     "data/raw/selfcap/bar-release.tar.gz" \
-    "data/selfcap/bar-release.tar.gz" \
     "data/raw/selfcap/selfcap_release.tar"
   do
     if [[ -f "$candidate" ]]; then
@@ -106,10 +109,6 @@ if [[ "$SELFCAP_TAR_USER_SET" -eq 0 ]]; then
       break
     fi
   done
-fi
-
-if [[ -z "$SELFCAP_TAR" ]]; then
-  SELFCAP_TAR="data/raw/selfcap/bar-release.tar.gz"
 fi
 
 VENV_ACTIVATE="third_party/FreeTimeGsVanilla/.venv/bin/activate"
@@ -133,17 +132,22 @@ if [[ "$RUN_GATE0" -eq 1 ]]; then
 fi
 
 if [[ "$RUN_SELFCAP_ADAPTER" -eq 1 ]]; then
-  if [[ -f "$ADAPTER_SCRIPT" && -f "$SELFCAP_TAR" ]]; then
+  SELFCAP_TRI_DIR="$SELFCAP_OUT_DIR/triangulation"
+  if [[ -d "$SELFCAP_TRI_DIR" ]]; then
+    echo "[info] Skip SelfCap adapter: triangulation already exists at $SELFCAP_TRI_DIR"
+  elif [[ -f "$ADAPTER_SCRIPT" && -f "$SELFCAP_TAR" && -f "$VENV_ACTIVATE" ]]; then
     echo "[info] SelfCap adapter prerequisites ready: $ADAPTER_SCRIPT + $SELFCAP_TAR"
     if [[ -n "$ADAPTER_CMD" ]]; then
       run_cmd "$ADAPTER_CMD"
     else
-      echo "[warn] adapter args are project-specific; pass --adapter-cmd to execute it"
+      run_cmd "source '$VENV_ACTIVATE' && python '$ADAPTER_SCRIPT' --tar_gz '$SELFCAP_TAR' --output_dir '$SELFCAP_OUT_DIR' --camera_ids 02,03,04,05,06,07,08,09 --frame_start 0 --num_frames 60 --image_downscale 2 --seed 0"
     fi
   else
-    echo "[warn] Skip SelfCap adapter: missing script or tar"
+    echo "[warn] Skip SelfCap adapter: missing script/tar/venv"
     echo "       script: $ADAPTER_SCRIPT"
     echo "       tar:    $SELFCAP_TAR"
+    echo "       venv:   $VENV_ACTIVATE"
+    echo "       out:    $SELFCAP_OUT_DIR"
   fi
 fi
 

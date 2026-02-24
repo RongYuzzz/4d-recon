@@ -47,42 +47,32 @@ Notes:
 - If `pycolmap` is unavailable, it falls back to `third_party/FreeTimeGsVanilla/datasets/read_write_model.py`.
 - Output manifest: `frame_manifest.csv`.
 
-## SelfCap Adapter (HF `zju3dv/SelfCap-Dataset`)
+## SelfCap Adapter (Gate-1 Canonical)
 
-`bar-release.tar.gz` 实测目录结构为：
-- `videos/*.mp4`
-- `pcds/*.ply`（每帧 sparse point cloud）
-- `dense_pcds/*.ply`（稀疏采样的 dense point cloud）
-- `optimized/{intri.yml,extri.yml}`
+推荐主入口：`scripts/adapt_selfcap_release_to_freetime.py`
 
-本仓库提供 `scripts/prepare_selfcap_for_freetime.py`，将上述结构转换为：
-- `triangulation/points3d_frame*.npy` + `colors_frame*.npy`
-- `colmap/sparse/0/{cameras.bin,images.bin,points3D.bin}`
-
-### 60 帧点云段（不解视频，先跑数据链路）
+- 输入 tarball：`data/selfcap/bar-release.tar.gz`
+- 输出目录：`data/selfcap_bar_8cam60f`
+- 默认推荐参数：`--camera_ids 02,03,04,05,06,07,08,09 --frame_start 0 --num_frames 60 --image_downscale 2`
 
 ```bash
-python scripts/prepare_selfcap_for_freetime.py \
-  --selfcap_root data/raw/selfcap/extracted/bar-release \
-  --out_root data/scene_selfcap_bar_200_260_noimg \
-  --frame_start 200 \
-  --frame_end 260 \
-  --image_width 2112 \
-  --image_height 3760
+PY=/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python
+$PY scripts/adapt_selfcap_release_to_freetime.py \
+  --tar_gz data/selfcap/bar-release.tar.gz \
+  --output_dir data/selfcap_bar_8cam60f \
+  --camera_ids 02,03,04,05,06,07,08,09 \
+  --frame_start 0 \
+  --num_frames 60 \
+  --image_downscale 2 \
+  --seed 0
 ```
 
-### 如果要直接训练（需要图像），增加 `--extract_images`
+该 canonical 路线直接读取 `bar-release.tar.gz`，不依赖系统 `ffmpeg`/`ffprobe`。
 
-前提：`selfcap_root/videos/<cam>.mp4` 存在，且机器上有 `ffmpeg`/`ffprobe`。
+### Legacy / Alternative
 
-```bash
-python scripts/prepare_selfcap_for_freetime.py \
-  --selfcap_root data/raw/selfcap/extracted/bar-release \
-  --out_root data/scene_selfcap_bar_200_260 \
-  --frame_start 200 \
-  --frame_end 260 \
-  --extract_images
-```
+历史流程 `prepare_selfcap_for_freetime.py`（若你本地仍保留该脚本）属于非主入口。
+该路线依赖已解压目录结构，且在抽帧模式下需要系统 `ffmpeg`/`ffprobe`。
 
 ## Gate Smoke Entrypoints
 

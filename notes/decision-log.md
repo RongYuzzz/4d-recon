@@ -49,3 +49,14 @@
   - `colors_frame%06d.npy`
 - 用途：在无 ROMA/上游三角化产物时先跑通 T0 审计。
 - 更新：`run_t0_zero_velocity.sh` 支持 `end_frame=-1` 自动推断（按 `points3d_frame*.npy` 最大编号 + 1）。
+
+## 2026-02-24
+
+### SelfCap Gate-1 Canonical 定版
+- 主入口定版为：`scripts/adapt_selfcap_release_to_freetime.py`。
+- 推荐默认输入/输出：
+  - 输入 tarball：`data/selfcap/bar-release.tar.gz`
+  - 输出目录：`data/selfcap_bar_8cam60f`
+- 默认参数固定为 8 机位 60 帧配置：`02,03,04,05,06,07,08,09` + `frame_start=0` + `num_frames=60` + `image_downscale=2`。
+- `scripts/run_mvp_repro.sh` 统一为上述默认值；当 `data/selfcap_bar_8cam60f/triangulation` 不存在且 tar/script/venv 就绪时自动执行 adapter（`--dry-run` 仅打印命令）。
+- `prepare_selfcap_for_freetime.py` 路线降级为 Legacy/Alternative，仅用于特定场景兼容。
