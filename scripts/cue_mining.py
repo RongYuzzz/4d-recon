@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import re
 import sys
@@ -107,6 +108,42 @@ def _save_grid(images: list[np.ndarray], out_path: Path, max_cols: int = 4) -> N
     canvas.save(out_path, quality=95)
 
 
+def _masks_to_unit_float(masks: np.ndarray) -> np.ndarray:
+    """Normalize masks to float32 in [0,1], compatible with {0,1} and {0,255}."""
+    m = masks.astype(np.float32)
+    if m.size == 0:
+        return m
+    if float(m.max()) > 1.0:
+        m = m / 255.0
+    return np.clip(m, 0.0, 1.0)
+
+
+def _build_quality_stats(masks: np.ndarray) -> dict[str, object]:
+    if masks.ndim != 4:
+        _fail(f"quality stats expect masks shape [T,V,Hm,Wm], got {masks.shape}")
+
+    m = _masks_to_unit_float(masks)
+    mask_mean_per_t = [float(x) for x in m.mean(axis=(1, 2, 3))]
+    mask_mean_per_view = [float(x) for x in m.mean(axis=(0, 2, 3))]
+    mask_min = float(m.min()) if m.size else 0.0
+    mask_max = float(m.max()) if m.size else 0.0
+    temporal_flicker_l1_mean = (
+        float(np.abs(m[1:] - m[:-1]).mean()) if m.shape[0] >= 2 else 0.0
+    )
+    all_black = bool(mask_max <= 1e-8)
+    all_white = bool(mask_min >= 1.0 - 1e-8)
+
+    return {
+        "mask_mean_per_t": mask_mean_per_t,
+        "mask_mean_per_view": mask_mean_per_view,
+        "mask_min": mask_min,
+        "mask_max": mask_max,
+        "temporal_flicker_l1_mean": temporal_flicker_l1_mean,
+        "all_black": all_black,
+        "all_white": all_white,
+    }
+
+
 def _run_diff_backend(
     images_dir: Path,
     camera_names: list[str],
@@ -171,10 +208,160 @@ def _run_diff_backend(
 
 
 def _run_vggt_backend() -> None:
-    _fail(
-        "backend=vggt is not available in this workspace yet. "
-        "Use --backend diff for MVP, or follow notes/vggt_setup.md to install VGGT."
+    _fail("internal: _run_vggt_backend called without args")
+
+
+def _run_vggt_backend_impl(
+    images_dir: Path,
+    camera_names: list[str],
+    frame_start: int,
+    num_frames: int,
+    mask_downscale: int,
+    threshold_quantile: float,
+    vggt_model_id: str,
+    vggt_cache_dir: str,
+    vggt_mode: str,
+) -> tuple[np.ndarray, dict[str, list[np.ndarray]]]:
+    if not (0.0 < threshold_quantile < 1.0):
+        _fail(f"threshold_quantile must be in (0,1), got {threshold_quantile}")
+    if num_frames <= 0:
+        _fail(f"num_frames must be > 0, got {num_frames}")
+    if frame_start < 0:
+        _fail(f"frame_start must be >= 0, got {frame_start}")
+    if mask_downscale <= 0:
+        _fail(f"mask_downscale must be >= 1, got {mask_downscale}")
+    if vggt_mode not in {"crop", "pad"}:
+        _fail(f"vggt_mode must be 'crop' or 'pad', got {vggt_mode}")
+    if not vggt_model_id.strip():
+        _fail("vggt_model_id must be non-empty")
+
+    try:
+        import torch
+        from vggt.models.vggt import VGGT
+        from vggt.utils.load_fn import load_and_preprocess_images
+    except Exception as exc:  # noqa: BLE001
+        _fail(
+            "backend=vggt requires VGGT package. "
+            "Install with: pip install 'git+https://github.com/facebookresearch/vggt.git'. "
+            f"import error: {exc}"
+        )
+
+    frame_indices = [frame_start + i for i in range(num_frames)]
+    frame_maps: dict[str, dict[int, Path]] = {}
+    frame_cache: dict[str, list[np.ndarray]] = {}
+    for cam_name in camera_names:
+        cam_dir = images_dir / cam_name
+        frame_map = _index_camera_frames(cam_dir)
+        missing = [idx for idx in frame_indices if idx not in frame_map]
+        if missing:
+            _fail(
+                f"camera '{cam_name}' missing frames for requested range: "
+                f"{missing[:5]}{'...' if len(missing) > 5 else ''}"
+            )
+        frame_maps[cam_name] = frame_map
+        frame_cache[cam_name] = [_read_rgb(frame_map[frame_indices[0]])]
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    cache_dir = vggt_cache_dir.strip() or None
+    print(
+        f"[CueMining][VGGT] loading model '{vggt_model_id}' "
+        f"on device={device} cache_dir={cache_dir or '<default>'}"
     )
+    try:
+        model = VGGT.from_pretrained(vggt_model_id, cache_dir=cache_dir)
+    except Exception as exc:  # noqa: BLE001
+        _fail(
+            "failed to load VGGT model from pretrained id "
+            f"'{vggt_model_id}'. error: {exc}"
+        )
+    model = model.to(device).eval()
+
+    masks_tv: list[np.ndarray] = []
+    prev_depth: np.ndarray | None = None
+    prev_conf: np.ndarray | None = None
+    num_views = len(camera_names)
+    eps = 1e-6
+
+    for local_t, frame_idx in enumerate(frame_indices):
+        image_paths = [str(frame_maps[cam_name][frame_idx]) for cam_name in camera_names]
+        images = load_and_preprocess_images(image_paths, mode=vggt_mode).to(device)
+
+        with torch.no_grad():
+            if device == "cuda":
+                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    pred = model(images)
+            else:
+                pred = model(images)
+
+        if "depth" not in pred:
+            _fail("VGGT output missing key 'depth'")
+        depth_t = pred["depth"].detach().float().cpu().numpy()
+        if depth_t.ndim >= 4 and depth_t.shape[0] == 1:
+            depth_t = depth_t[0]
+        if depth_t.ndim >= 4 and depth_t.shape[-1] == 1:
+            depth_t = depth_t[..., 0]
+        if depth_t.ndim != 3:
+            _fail(f"Unexpected VGGT depth shape: {depth_t.shape}")
+        if depth_t.shape[0] != num_views:
+            if depth_t.shape[-1] == num_views:
+                depth_t = np.moveaxis(depth_t, -1, 0)
+            else:
+                _fail(f"VGGT depth view dim mismatch: shape={depth_t.shape}, expected V={num_views}")
+
+        conf_t: np.ndarray | None = None
+        if "depth_conf" in pred:
+            conf_t = pred["depth_conf"].detach().float().cpu().numpy()
+            if conf_t.ndim >= 4 and conf_t.shape[0] == 1:
+                conf_t = conf_t[0]
+            if conf_t.ndim != 3:
+                _fail(f"Unexpected VGGT depth_conf shape: {conf_t.shape}")
+            if conf_t.shape[0] != num_views:
+                if conf_t.shape[-1] == num_views:
+                    conf_t = np.moveaxis(conf_t, -1, 0)
+                else:
+                    _fail(
+                        f"VGGT depth_conf view dim mismatch: shape={conf_t.shape}, expected V={num_views}"
+                    )
+
+        if prev_depth is None:
+            dyn_views = [
+                _downsample_mask(np.zeros_like(depth_t[v], dtype=np.float32), mask_downscale)
+                for v in range(num_views)
+            ]
+        else:
+            # Use temporal variation of log-depth as dynamic cue.
+            diff = np.abs(
+                np.log(np.clip(depth_t, eps, None)) - np.log(np.clip(prev_depth, eps, None))
+            ).astype(np.float32)
+            if conf_t is not None and prev_conf is not None:
+                pair_conf = np.minimum(np.clip(conf_t, 0.0, 1.0), np.clip(prev_conf, 0.0, 1.0))
+                diff *= pair_conf.astype(np.float32)
+
+            dyn_views = []
+            for v in range(num_views):
+                dv = diff[v]
+                thr = float(np.quantile(dv, threshold_quantile))
+                dv_max = float(dv.max())
+                if dv_max <= thr + 1e-6:
+                    dyn = np.zeros_like(dv, dtype=np.float32)
+                else:
+                    dyn = np.clip((dv - thr) / (dv_max - thr + 1e-6), 0.0, 1.0).astype(np.float32)
+                dyn_views.append(_downsample_mask(dyn, mask_downscale))
+
+        masks_tv.append(np.stack(dyn_views, axis=0))
+        prev_depth = depth_t
+        prev_conf = conf_t
+
+        if local_t == 0 or local_t == num_frames - 1 or (local_t + 1) % 10 == 0:
+            print(f"[CueMining][VGGT] processed frame {local_t + 1}/{num_frames}")
+
+        # Free temporary tensors early to reduce peak memory in long loops.
+        del pred, images
+        if device == "cuda":
+            torch.cuda.empty_cache()
+
+    masks = np.stack(masks_tv, axis=0).astype(np.uint8)  # [T,V,Hm,Wm]
+    return masks, frame_cache
 
 
 def parse_args() -> argparse.Namespace:
@@ -187,6 +374,22 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--backend", choices=["diff", "vggt", "zeros"], default="diff")
     ap.add_argument("--threshold_quantile", type=float, default=0.9)
     ap.add_argument("--temporal_smoothing", choices=["none", "median3"], default="median3")
+    ap.add_argument(
+        "--vggt_model_id",
+        default="facebook/VGGT-1B",
+        help="Hugging Face model id for VGGT backend",
+    )
+    ap.add_argument(
+        "--vggt_cache_dir",
+        default="",
+        help="Optional cache dir for VGGT weights (empty uses default HF cache)",
+    )
+    ap.add_argument(
+        "--vggt_mode",
+        choices=["crop", "pad"],
+        default="crop",
+        help="VGGT preprocess mode passed to load_and_preprocess_images",
+    )
     ap.add_argument("--overwrite", action="store_true")
     return ap.parse_args()
 
@@ -205,8 +408,17 @@ def main() -> None:
     viz_dir.mkdir(parents=True, exist_ok=True)
 
     if args.backend == "vggt":
-        _run_vggt_backend()
-        return
+        masks, frame_cache = _run_vggt_backend_impl(
+            images_dir=images_dir,
+            camera_names=camera_names,
+            frame_start=args.frame_start,
+            num_frames=args.num_frames,
+            mask_downscale=args.mask_downscale,
+            threshold_quantile=args.threshold_quantile,
+            vggt_model_id=args.vggt_model_id,
+            vggt_cache_dir=args.vggt_cache_dir,
+            vggt_mode=args.vggt_mode,
+        )
     if args.backend == "zeros":
         if args.num_frames <= 0:
             _fail(f"num_frames must be > 0, got {args.num_frames}")
@@ -226,7 +438,7 @@ def main() -> None:
             name: [_read_rgb(_index_camera_frames(images_dir / name)[args.frame_start])]
             for name in camera_names
         }
-    else:
+    elif args.backend == "diff":
         masks, frame_cache = _run_diff_backend(
             images_dir=images_dir,
             camera_names=camera_names,
@@ -256,6 +468,9 @@ def main() -> None:
         num_frames=np.int32(args.num_frames),
         mask_downscale=np.int32(args.mask_downscale),
     )
+    quality = _build_quality_stats(masks)
+    quality_path = out_dir / "quality.json"
+    quality_path.write_text(json.dumps(quality, indent=2) + "\n", encoding="utf-8")
 
     # Fixed viz names for report reuse.
     overlay_cam = "02" if "02" in camera_names else camera_names[0]
@@ -287,6 +502,15 @@ def main() -> None:
         f"range=[{int(masks.min())},{int(masks.max())}]"
     )
     print(f"[CueMining] npz: {npz_path}")
+    print(
+        "[CueMining] quality: "
+        f"mean_t_avg={float(np.mean(quality['mask_mean_per_t'])):.6f} "
+        f"mean_v_avg={float(np.mean(quality['mask_mean_per_view'])):.6f} "
+        f"min={float(quality['mask_min']):.6f} max={float(quality['mask_max']):.6f} "
+        f"flicker_l1={float(quality['temporal_flicker_l1_mean']):.6f} "
+        f"all_black={bool(quality['all_black'])} all_white={bool(quality['all_white'])}"
+    )
+    print(f"[CueMining] quality_json: {quality_path}")
     print(f"[CueMining] viz: {viz_dir}")
 
 

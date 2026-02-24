@@ -51,6 +51,22 @@
 
 命名固定，便于汇报脚本和文档直接引用。
 
+### 3.3 质量诊断 `quality.json`（必须）
+
+必含 keys（MVP）：
+
+- `mask_mean_per_t`：`float[T]`，每帧掩码均值，值域 `[0,1]`
+- `mask_mean_per_view`：`float[V]`，每视角掩码均值，值域 `[0,1]`
+- `mask_min`：全局最小值（归一化后，`[0,1]`）
+- `mask_max`：全局最大值（归一化后，`[0,1]`）
+- `temporal_flicker_l1_mean`：`mean(|mask[t]-mask[t-1]|)`，值域 `[0,1]`
+- `all_black`：`bool`，是否全黑（止损信号）
+- `all_white`：`bool`，是否全白（止损信号）
+
+说明：
+- 统计默认以掩码归一化到 `[0,1]` 后计算，兼容 `{0,1}` 与 `{0,255}` 两种存储。
+- 训练/汇报脚本可用 `all_black/all_white` 做自动 stoploss 判定。
+
 ## 4. 训练样本到 Mask 索引映射（验收关键）
 
 训练侧样本字段（来自 `FreeTimeDataset.__getitem__`）：
