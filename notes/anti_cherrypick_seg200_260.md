@@ -77,15 +77,37 @@ ours-weak (`cam09`):
 - 与主段相同，弱融合增益量级偏小（非数量级提升）；
 - 未出现新型不稳定（NaN、明显训练发散、全黑/全白 cue）。
 
-## 5) A30（feature_loss_v1 on seg2）状态
+## 5) A30（feature_loss_v1 on seg2）补跑结果（2026-02-25）
 
-截至 2026-02-24 本分支收口时，仓库 `main` 与当前 worktree 均未包含
-`scripts/run_train_feature_loss_selfcap.sh`，且训练器中也尚未合入
-feature-metric-loss 对应配置/损失路径，因此 `seg2 feature_loss_v1_600`
-暂不可执行。
+本次在隔离分支临时引入 feature-loss runner 后，按固定预算补跑：
 
-触发条件（恢复执行 A30）：
-- Owner B 合入 feature-loss 主线（至少包含可运行 runner 与 trainer loss 开关）；
-- 在同一 seg2 数据与 600-step 预算下补跑：
-  - `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600`
-- 将 test@step599 指标追加到本文档，形成 baseline vs feature_loss_v1 的 anti-cherrypick 证据。
+```bash
+cd /root/projects/4d-recon/.worktrees/owner-a-20260225-seg2-featureloss
+GPU=0 MAX_STEPS=600 \
+DATA_DIR=/root/projects/4d-recon/data/selfcap_bar_8cam60f_seg200_260 \
+RESULT_DIR=/root/projects/4d-recon/outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600 \
+LAMBDA_VGGT_FEAT=0.005 VGGT_FEAT_START_STEP=200 VGGT_FEAT_EVERY=8 \
+bash scripts/run_train_feature_loss_selfcap.sh
+```
+
+产物路径：
+- `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600/stats/test_step0599.json`
+- `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600/videos/traj_4d_step599.mp4`
+
+feature_loss_v1（test@step599, `cam09`）：
+- PSNR: `18.0915`
+- SSIM: `0.6319`
+- LPIPS: `0.4174`
+- tLPIPS: `0.02251`
+
+差值（feature_loss_v1 - baseline）：
+- ΔPSNR: `+0.0447`
+- ΔSSIM: `-0.0034`（更差）
+- ΔLPIPS: `+0.0036`（更差）
+- ΔtLPIPS: `-0.00092`（更好）
+
+补充（val@step599）：
+- feature_loss_v1: PSNR `17.7264`, SSIM `0.6092`, LPIPS `0.4296`
+
+结论（一句话）：
+- 在 seg2 上，feature_loss_v1 相比 baseline 呈现“混合变化、接近 baseline”的形态（非稳定全面提升），可视为 anti-cherrypick 证据已补齐。
