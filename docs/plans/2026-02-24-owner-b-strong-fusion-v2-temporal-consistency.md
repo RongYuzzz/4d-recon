@@ -1,8 +1,12 @@
 # Strong Fusion V2 (Temporal Consistency) Implementation Plan (Owner B)
 
+> 状态：**Plan-B / Extra only**。在 “VGGT feature metric loss（主线）” 的 full runs 与证据包封存完成前，不启动本计划。  
+> 定位：把 KLT strong 维持为 `attempt/bridge/baseline`，用于验证 strong 接口与对应质量诊断；不作为毕设/论文的核心创新点。
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 在不破坏现有 `protocol_v1` 可复现性的前提下，把 strong fusion 从“attempt_and_audit（stoploss）”推进到“机制更合理、信号更干净”的 V2：基于 KLT 轨迹的 **pred@t vs pred@t'** 时序一致性约束，并用更严格的 KLT 可靠性过滤/权重，给出是否值得继续投入 strong 的结论（含证据）。
+**Goal:** 在不破坏现有 `protocol_v1` 可复现性的前提下，把 strong fusion 从“attempt_and_audit（stoploss）”推进到“机制更合理、信号更干净”的 V2：基于 KLT 轨迹的 **pred@t vs pred@t'** 时序一致性约束，并用更严格的 KLT 可靠性过滤/权重，给出是否值得继续投入 strong 的结论（含证据）。  
+**Timebox:** 48–72h；最多 1 次 full600 + 2 次短跑 sweep（其余只做 smoke/sanity）。
 
 **Architecture:** 复用现有 `temporal_corr.npz` 契约与提取脚本，扩展 strong loss 的计算模式：
 - v1（现状）：`pred_t(src_xy)` vs `GT_{t'}(dst_xy)`（仅作历史对照）

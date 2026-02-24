@@ -324,15 +324,15 @@ Expected: 定位 `v`、`duration`、`t` 的定义与更新位置。
 
 | 周期 | 目标 | 必须产出（可直接写进论文/中期检查） |
 |---|---|---|
-| `02-26`～`03-01` | 稳定“可复现基线”与脚本化复现 | 一键复现脚本（baseline/weak/strong 至少其一稳定）、环境说明 `env.md`、固定 seed 的结果复现实证 |
-| `03-02`～`03-08` | 扩展到 2～3 个场景的小规模定量 | 2～3 场景的指标表（PSNR/SSIM/LPIPS 可选）+ 同场景可视化对比视频 |
-| `03-09`～`03-15` | cue mining 从“能跑”升级到“可解释” | 伪掩码生成方法细化（谱聚类/Gram 方差/边缘细化择优实现）+ 质量可视化与失败模式总结 |
-| `03-16`～`03-22` | strong 融合从“有效现象”升级到“机制证据” | 对应映射（例如 gaussian-id/深度代理）与 loss 设计的消融矩阵（至少 2×2）+ 关键失败案例与诊断 |
-| `03-23`～`03-31` | 写作与结果打包进入稳定节奏 | 论文/报告的 Method 与 Experiments 两章初稿（含图表占位与数据来源），以及一份可复用的答辩 Q&A 口径 |
+| `02-26`～`03-01` | 冻结复现口径 + 补齐诊断页 + 主线设计冻结 | 1) protocol v1 一键复现脚本与证据包刷新；2) 两页防守证据：`||v||` 分布统计 + cue 对齐 overlay；3) VGGT feature metric loss（主线）接口设计与 stoploss 写清 |
+| `03-02`～`03-08` | **唯一主线：VGGT feature metric loss v1** 落地并跑出趋势 | 1) 离线 GT 特征 cache；2) 训练时低频/低分辨率/patch 的 feature loss；3) 在 canonical 场景上跑出 baseline/control/feature-loss 的可审计对比（优先看 tLPIPS） |
+| `03-09`～`03-15` | cue mining 质量/对齐/稳定化 + anti-cherrypick | 1) cue mining `quality.json` 与更多 overlay；2) second segment（seg2）对比（baseline vs 主线方法）；3) failure modes 总结 |
+| `03-16`～`03-22` | strong（VGGT-based）从“有效现象”升级到“机制证据”（严格 timebox） | 1) 机制级消融矩阵（至少 2×2）；2) matching/feature 可视化证据；3) 可审计止损与失败分析（strong 成功非强制） |
+| `03-23`～`03-31` | 写作与 evidence 固化进入稳定节奏 | 论文/报告 Method & Experiments 两章初稿（图表/表格可复现），以及答辩 Q&A 口径 |
 
-- 第2-3周：稳定基线 + 动静解耦渲染通道 + 梯度回传（你在 T0/T1 已完成核心）
-- 第4-6周：完善 VGGT 伪掩码（谱聚类/Gram 方差/投影梯度细化）与更鲁棒的 cue mining
-- 第7-9周：系统化的 attention-guided loss（更严谨的对应映射 + 负样本策略）
+- 主线（只选一条，避免 GPU/注意力被撕裂）：**VGGT feature metric loss**（离线 GT cache；训练时低频/低分辨率/patch；必要时 dynamic gating）。
+- Plan-B（触发式救火开关，不并行）：triangulation→粗 3D velocity 初始化，48h timebox（仅当主线连续 full runs 无趋势时才启动）。
+- 其它：cue mining 继续升级为“可解释/可诊断”，但定位为主线的辅助（gating/诊断），而非唯一创新点。
 - 第10-11周：多场景定量 + 完整消融矩阵
 - 第12周：编辑演示（移除/替换/重放）
 - 第13-14周：论文撰写与查重（术语与主叙事沿用第 0 节冻结口径）

@@ -80,3 +80,11 @@
 - 汇报交付面：
   - scoreboard 自动生成与 evidence v5 刷新（C）。
 
+## 7. 2026-02-24 评审拍板（对后续计划的影响）
+
+评审材料已收敛至：`docs/reviews/2026-02-24/`
+
+- `02-25`（protocol v1）不大改：KLT strong 明确降级为 baseline/attempt；weak “无稳定收益（control 更好）”作为关键发现。
+- `02-26+` 唯一主线：VGGT **feature metric loss**（离线 GT cache + 训练时低频/低分辨率/patch）。
+- Plan‑B（触发式救火开关，不并行）：triangulation→粗 3D velocity 初始化，48h timebox。
+- 强制新增两页诊断证据：`||v||` 分布统计 + cue 对齐 overlay（用于防守“zero velocity 死路”等攻击点）。

@@ -6,14 +6,14 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 让 cue mining 从 “diff fallback 可跑” 升级到 “可解释/可诊断/可复现”，并完成一次 anti-cherrypick 的 **second segment**（同 SelfCap bar，不同帧段）baseline vs ours-weak 对比，为 3 月多场景扩展打底。
+**Goal:** 让 cue mining 从 “diff fallback 可跑” 升级到 “可解释/可诊断/可复现”，并完成一次 anti-cherrypick 的 **second segment**（同 SelfCap bar，不同帧段）对比（baseline vs 当前主线方法），为 3 月多场景扩展打底。
 
-**Parallel Safety:** Owner A 主要占用 `GPU0`（必要时），不阻塞 Owner B（strong 机制改进）与 Owner C（报告/证据包/多场景表格）。
+**Parallel Safety:** Owner A 主要占用 `GPU0`（必要时），不阻塞 Owner B（VGGT feature metric loss 主线）与 Owner C（scoreboard/evidence/报告）。
 
 **Non-Goal (本轮不做):**
 - 不改动 `docs/protocols/protocol_v1.yaml`（midterm 口径保持冻结）。
 - 不在本轮强行把 cue mining 绑定到某个外部大模型（VGGT 若继续阻塞，必须有可解释 fallback）。
-- 不追求 strong 指标领先（strong 的后续由 B 主导）。
+- 不把 KLT strong v2 当主线（KLT 仅作为 attempt/bridge 的可审计 baseline；主线是 VGGT feature-level prior）。
 
 ---
 
@@ -53,7 +53,13 @@ Expected:
 **Step 2: `run_cue_mining.sh` 打印质量摘要**
 - 输出一行 summary（便于 log grep）：mask mean/min/max、flicker、black/white flags。
 
-**Step 3: 单测（不依赖 pytest）**
+**Step 3: Cue 对齐 sanity（输出更多 overlay，降低“看起来有但训练没用”的风险）**
+- 在 `viz/` 下额外输出一小组固定命名的 overlay（例如每个 cam 抽 2 帧）：
+  - `overlay_<cam>_frame000000.jpg`
+  - `overlay_<cam>_frame000030.jpg`
+- 目的：快速确认 cam/frame 索引、resize/坐标系、值域方向（dynamic=1 还是 static=1）没有反。
+
+**Step 4: 单测（不依赖 pytest）**
 - 用现有 `scripts/tests/test_cue_mining_contract.py` 的 synthetic 数据路径复用/或新建极小 synthetic；
 - 断言 `quality.json` 存在且 keys 完整，`all_black/all_white` 为 bool。
 
@@ -118,7 +124,7 @@ $PY scripts/adapt_selfcap_release_to_freetime.py \
 
 ---
 
-## Task A27: Seg2 上 baseline vs ours-weak（同预算 600-step）
+## Task A27: Seg2 上对比实验（同预算 600-step）
 
 原则（避免 cherry-pick）：
 - Seg2 **不允许**为了“让 seg2 更好看”而重调超参；必须复用主段（v1）最终拍板的弱融合参数（例如 `PSEUDO_MASK_WEIGHT/PSEUDO_MASK_END_STEP`）。
@@ -127,10 +133,13 @@ $PY scripts/adapt_selfcap_release_to_freetime.py \
 - baseline：
   - `DATA_DIR=data/selfcap_bar_8cam60f_seg200_260`
   - `RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/baseline_600`
-- ours-weak（沿用 tuned defaults）：
-  - `CUE_TAG=selfcap_bar_8cam60f_seg200_260_v1`（避免覆盖主段）
-  - `PSEUDO_MASK_WEIGHT=0.3`、`PSEUDO_MASK_END_STEP=200`
-  - `RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/ours_weak_600`
+- 主线方法（二选一，优先 vggt feature loss；若尚未集成则先跑 weak 作为占位）：
+  1. `feature_loss_v1`（由 Owner B 集成后启用）：
+     - `RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600`
+  2. `ours-weak`（fallback，占位对比）：
+     - `CUE_TAG=selfcap_bar_8cam60f_seg200_260_v1`（避免覆盖主段）
+     - `PSEUDO_MASK_WEIGHT=0.3`、`PSEUDO_MASK_END_STEP=200`
+     - `RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/ours_weak_600`
 
 Run（示例）：
 ```bash
@@ -141,6 +150,13 @@ DATA_DIR=data/selfcap_bar_8cam60f_seg200_260 \
 RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/baseline_600 \
 bash scripts/run_train_baseline_selfcap.sh
 
+# Option A (preferred): feature loss v1 (when available)
+# GPU=0 MAX_STEPS=600 \
+# DATA_DIR=data/selfcap_bar_8cam60f_seg200_260 \
+# RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600 \
+# bash scripts/run_train_feature_loss_selfcap.sh
+
+# Option B (fallback): ours-weak (placeholder)
 GPU=0 MAX_STEPS=600 \
 DATA_DIR=data/selfcap_bar_8cam60f_seg200_260 \
 RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/ours_weak_600 \

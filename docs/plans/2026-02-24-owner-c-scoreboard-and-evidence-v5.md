@@ -44,6 +44,8 @@ Expected:
   - 同时兼容 `outputs/protocol_v1/selfcap_bar_8cam60f/...` 与 `outputs/protocol_v1/gate1/selfcap_bar_8cam60f/...`；
   - 输出 markdown 表格 + delta(vs baseline) 列；
   - 当存在多个 strong 变体（如 `ours_strong_600` / `ours_strong_v2_600`）时，不会因为“只认一个 basename”而漏报；
+  - 当存在 feature loss 变体（`feature_loss_v1_600` / `feature_loss_v1_gated_600`）时，能被纳入 scoreboard；
+  - 生成 “风险提示” 区块：显式标红 `control > ours_weak`（提醒 cue/注入方式可能拖后腿）；
   - 当 `tlpips` 为空时不崩溃（以 `-` 或空值展示）。
 
 **Step 2: 跑测试确认失败**
@@ -68,10 +70,14 @@ Expected:
 - 行筛选：
   - 只选 stage/step 匹配的行；
   - 以 `run_dir` 的 basename 归类后保留最小集合（若存在）：
-    - 必保留：`baseline_600`、`ours_weak_600`、`control_weak_nocue_600`
+    - 必保留：`baseline_600`、`control_weak_nocue_600`
+    - weak：`ours_weak_600`（若存在）
+    - feature loss：`feature_loss_v1_600`、`feature_loss_v1_gated_600`（若存在）
     - strong：保留所有 `ours_strong*_600`（例如 `ours_strong_600`、`ours_strong_v2_600`），但不强制保留 `*_smoke*`
 - 输出 markdown：
   - 表格列：PSNR/SSIM/LPIPS/tLPIPS + delta(vs baseline)
+  - 追加 “Risk / Action Items” 区块（必须写入，自动生成）：
+    - 若 `control_weak_nocue_600` 的指标优于 `ours_weak_600`（优先看 LPIPS/tLPIPS），输出 1 行标红提示（说明 cue/注入方式需要修正）
   - 追加“结论要点”占位（由 C 现场填 3 行 bullet）
 
 **Step 4: 重新跑测试**
