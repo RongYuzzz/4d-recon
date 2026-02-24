@@ -31,6 +31,11 @@ def run_test() -> None:
         (videos / "traj_4d_step1.mp4").write_bytes(b"fake-mp4")
         (ckpts / "ckpt_1.pt").write_bytes(b"fake-ckpt")
 
+        # Strong-fusion audit: correspondences viz should be included in pack.
+        corr_viz = root / "outputs" / "correspondences" / "demo" / "viz"
+        corr_viz.mkdir(parents=True, exist_ok=True)
+        (corr_viz / "klt_pair.png").write_bytes(b"fake-png")
+
         out_tar = root / "pack.tar.gz"
         cmd = [
             sys.executable,
@@ -55,6 +60,7 @@ def run_test() -> None:
             "notes/demo-runbook.md",
             "outputs/runA/stats/val_step0001.json",
             "outputs/runA/videos/traj_4d_step1.mp4",
+            "outputs/correspondences/demo/viz/klt_pair.png",
             "git_rev.txt",
             "manifest_sha256.csv",
         }

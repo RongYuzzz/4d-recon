@@ -113,6 +113,11 @@ def collect_files(repo_root: Path) -> list[Path]:
     if report_pack_dir.exists():
         files.update(p for p in report_pack_dir.rglob("*") if p.is_file())
 
+    # Strong-fusion audit: include lightweight correspondence visualizations.
+    corr_dir = outputs / "correspondences"
+    if corr_dir.exists():
+        files.update(p for p in corr_dir.glob("**/viz/*") if p.is_file())
+
     excluded_tokens = {"ckpts", "tb", "renders"}
     filtered = []
     for p in sorted(files):
