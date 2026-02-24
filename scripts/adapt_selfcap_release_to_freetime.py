@@ -186,12 +186,27 @@ def write_colmap_sparse0(
         cx = float(K[0, 2]) / image_downscale
         cy = float(K[1, 2]) / image_downscale
 
+        dist_key = f"dist_{cam}"
+        dist = intrinsics.get(dist_key, np.zeros((1, 5), dtype=np.float64)).reshape(-1)
+        if dist.size < 4:
+            dist = np.pad(dist, (0, 4 - dist.size), mode="constant")
+        use_opencv = np.max(np.abs(dist[:4])) > 1e-12
+        if use_opencv:
+            model = "OPENCV"
+            params = np.array(
+                [fx, fy, cx, cy, float(dist[0]), float(dist[1]), float(dist[2]), float(dist[3])],
+                dtype=np.float64,
+            )
+        else:
+            model = "PINHOLE"
+            params = np.array([fx, fy, cx, cy], dtype=np.float64)
+
         cameras[camera_id] = Camera(
             id=camera_id,
-            model="PINHOLE",
+            model=model,
             width=int(image_width),
             height=int(image_height),
-            params=np.array([fx, fy, cx, cy], dtype=np.float64),
+            params=params,
         )
 
         R = rotations[rot_key].reshape(3, 3).astype(np.float64)
