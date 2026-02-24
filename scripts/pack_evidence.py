@@ -8,6 +8,7 @@ import csv
 import hashlib
 import io
 import re
+import subprocess
 import tarfile
 from datetime import date
 from pathlib import Path
@@ -131,6 +132,23 @@ def build_manifest(repo_root: Path, files: list[Path]) -> bytes:
     return sio.getvalue().encode("utf-8")
 
 
+def build_git_rev_bytes(repo_root: Path) -> bytes:
+    """Return a small, human-readable git provenance blob (always returns bytes)."""
+    lines: list[str] = [f"repo_root: {repo_root}"]
+    try:
+        head = subprocess.check_output(["git", "-C", str(repo_root), "rev-parse", "HEAD"], text=True).strip()
+        short = subprocess.check_output(["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"], text=True).strip()
+        status = subprocess.check_output(["git", "-C", str(repo_root), "status", "--porcelain=v1"], text=True)
+        status = status.strip("\n")
+        lines.append(f"git_head: {head}")
+        lines.append(f"git_head_short: {short}")
+        lines.append("git_status_porcelain:")
+        lines.append(status if status else "<clean>")
+    except Exception as exc:  # pragma: no cover - depends on external git state
+        lines.append(f"git: unavailable ({exc})")
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo_root).resolve()
@@ -146,11 +164,16 @@ def main() -> int:
 
     files = collect_files(repo_root)
     manifest_bytes = build_manifest(repo_root, files)
+    git_rev_bytes = build_git_rev_bytes(repo_root)
 
     with tarfile.open(out_tar, "w:gz") as tf:
         for p in files:
             arcname = p.relative_to(repo_root).as_posix()
             tf.add(p, arcname=arcname)
+
+        info = tarfile.TarInfo(name="git_rev.txt")
+        info.size = len(git_rev_bytes)
+        tf.addfile(info, io.BytesIO(git_rev_bytes))
 
         info = tarfile.TarInfo(name="manifest_sha256.csv")
         info.size = len(manifest_bytes)

@@ -55,6 +55,7 @@ def run_test() -> None:
             "notes/demo-runbook.md",
             "outputs/runA/stats/val_step0001.json",
             "outputs/runA/videos/traj_4d_step1.mp4",
+            "git_rev.txt",
             "manifest_sha256.csv",
         }
         for name in must_have:
