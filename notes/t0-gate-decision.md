@@ -5,10 +5,18 @@
 - Dataset path: `/root/projects/4d-recon/data/selfcap_bar_8cam60f`
 
 ## Artifacts
-- Baseline CSV: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/baseline/t0_grad.csv`
-- Zero-velocity CSV: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/zero_velocity/t0_grad.csv`
-- Baseline MP4: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/baseline/videos/traj_4d_step199.mp4`
-- Zero-velocity MP4: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/zero_velocity/videos/traj_4d_step199.mp4`
+- As-run paths (historical, may not persist if worktree is removed):
+  - Baseline CSV: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/baseline/t0_grad.csv`
+  - Zero-velocity CSV: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/zero_velocity/t0_grad.csv`
+  - Baseline MP4: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/baseline/videos/traj_4d_step199.mp4`
+  - Zero-velocity MP4: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/zero_velocity/videos/traj_4d_step199.mp4`
+
+- Canonical paths (recommended on rerun from main workspace):
+  - Baseline CSV: `outputs/t0_selfcap/baseline/t0_grad.csv`
+  - Zero-velocity CSV: `outputs/t0_selfcap/zero_velocity/t0_grad.csv`
+  - Baseline MP4: `outputs/t0_selfcap/baseline/videos/traj_4d_step199.mp4`
+  - Zero-velocity MP4: `outputs/t0_selfcap/zero_velocity/videos/traj_4d_step199.mp4`
+  - Repro: `notes/demo-runbook.md` Step 3
 
 ## Decision
 - Baseline: `rows=200, finite=True, nonzero_v=200, nonzero_d=200`

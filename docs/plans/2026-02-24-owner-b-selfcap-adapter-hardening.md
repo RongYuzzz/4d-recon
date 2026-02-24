@@ -1,6 +1,6 @@
 # SelfCap Tarball Adapter Hardening Implementation Plan (Owner B)
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> 状态：已完成（存档）。不要再按本文执行；当前入口以 `README.md` / `notes/demo-runbook.md` 为准。
 
 **Goal:** 把 `scripts/adapt_selfcap_release_to_freetime.py` 打磨成可长期维护的“SelfCap Gate-1 canonical 数据入口”：可重复运行不污染输出目录、可在无视频/无解码环境下导出 tri+sparse（用于快速链路验证）、并补齐相机畸变模型支持与对应测试。
 
@@ -258,4 +258,3 @@ Expected:
 - 新增/变更的 flags：`--overwrite`、`--no_images`、`--image_width/--image_height`
 - 畸变支持：`OPENCV` 触发条件
 - 新增测试文件列表
-

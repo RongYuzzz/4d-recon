@@ -1,6 +1,8 @@
 # 4D Reconstruction Workspace
 
-This workspace tracks the execution of `2026-02-12-4d-reconstruction-execution.md`.
+This workspace tracks the execution of `/root/2026-02-12-4d-reconstruction-execution.md`.
+
+Day-to-day runnable commands live in `README.md` + `notes/demo-runbook.md`.
 
 ## Structure
 - `third_party/`: external repositories
@@ -75,8 +77,11 @@ Tips:
 
 ### Legacy / Alternative
 
-历史流程 `prepare_selfcap_for_freetime.py`（若你本地仍保留该脚本）属于非主入口。
-该路线依赖已解压目录结构，且在抽帧模式下需要系统 `ffmpeg`/`ffprobe`。
+历史流程 `scripts/prepare_selfcap_for_freetime.py` 属于非主入口（legacy）。
+
+差异（人话版）：
+- canonical：`adapt_selfcap_release_to_freetime.py` 直接吃 `bar-release.tar.gz`，不依赖系统 `ffmpeg/ffprobe`，用于 Gate-1/T0 的标准输入。
+- legacy：`prepare_selfcap_for_freetime.py` 吃“已解压目录结构”，`--extract_images` 抽帧时需要系统 `ffmpeg/ffprobe`，适合你已经有解压目录或想调试 yml->COLMAP 写入/抽帧到 `images/` 的场景。
 
 ## Gate Smoke Entrypoints
 

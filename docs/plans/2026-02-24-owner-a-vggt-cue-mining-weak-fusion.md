@@ -1,6 +1,6 @@
 # Owner A VGGT Cue Mining + Weak Fusion Plan (Next)
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> 状态：待执行（Next）。执行前确认不破坏主线可复现；当前入口以 `README.md` / `notes/demo-runbook.md` 为准。
 
 **Goal:** 在不破坏现有 baseline/Gate-0/Gate-1 可复现性的前提下，补齐“创新主线”的最小可交付：`cue mining(训练前/不finetune)` 产出 `pseudo_mask`，并以**弱融合**形式接入训练（mask-weighted photometric loss 或等价的低风险入口），形成 `Baseline vs Ours-Weak` 的可复现实验脚本与证据。
 

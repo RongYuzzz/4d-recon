@@ -62,8 +62,10 @@
 - `prepare_selfcap_for_freetime.py` 路线降级为 Legacy/Alternative，仅用于特定场景兼容。
 
 ### Data - SelfCap 路线验证完成
-- 已确认 HF 数据集 `zju3dv/SelfCap-Dataset` 的 `bar-release.tar.gz` 可用，并下载到：
-  - `/root/projects/4d-recon/data/raw/selfcap/bar-release.tar.gz`
+- 已确认 HF 数据集 `zju3dv/SelfCap-Dataset` 的 `bar-release.tar.gz` 可用，本地缓存位于：
+  - `data/raw/selfcap/bar-release.tar.gz`
+- Canonical 入口路径（脚本默认）：
+  - `data/selfcap/bar-release.tar.gz`（建议为上述缓存的 symlink）
 - 已验证 `bar-release` 内部结构：
   - `videos/*.mp4`
   - `pcds/*.ply`（每帧 sparse 点云）
@@ -87,7 +89,7 @@
   - `ffprobe`：`/usr/bin/ffprobe`
   - `colmap`：`/usr/bin/colmap`
 - 已执行 SelfCap 适配与抽帧：
-  - `python scripts/prepare_selfcap_for_freetime.py --selfcap_root data/raw/selfcap/extracted/bar-release --out_root data/scene_selfcap_bar_200_260 --frame_start 200 --frame_end 260 --extract_images`
+  - `python scripts/prepare_selfcap_for_freetime.py --selfcap_root data/raw/selfcap/extracted/bar-release --out_root data/scene_selfcap_bar_200_260 --frame_start 200 --frame_end 260 --extract_images`（legacy）
 - 产物状态：
   - `triangulation/points3d_frame*.npy`：`60`
   - `triangulation/colors_frame*.npy`：`60`

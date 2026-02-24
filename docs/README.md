@@ -1,0 +1,17 @@
+# Docs Index
+
+当前以“能跑、可复现、可答辩”为第一优先级，文档入口建议按以下顺序看：
+
+1. `README.md`
+   - 主入口命令、Gate-0/Gate-1 说明、SelfCap canonical adapter。
+2. `notes/demo-runbook.md`
+   - 现场演示命令（尽量只依赖主阵地 `/root/projects/4d-recon`）。
+3. `notes/data-manifest.md`
+   - 当前数据路径与历史产物清单（含可选清理项）。
+4. `notes/decision-log.md`
+   - 关键决策与验证记录（为什么这样做、什么时候定版）。
+5. `notes/t0-gate-decision.md` + `scripts/t0_grad_check.md`
+   - T0 审计结论与梯度检查口径。
+
+`docs/plans/` 下是执行计划/分工记录：大多数已标注“存档”，用于追溯过程；`Next` 类计划则用于后续推进。
+

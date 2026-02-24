@@ -1,7 +1,9 @@
 # SelfCap Gate-1 Run (Owner B)
 
 日期：2026-02-24
-工作区：`/root/projects/4d-recon/.worktrees/owner-b-20260224`
+当时工作树：`/root/projects/4d-recon/.worktrees/owner-b-20260224`（历史记录）
+
+建议：在主阵地 `/root/projects/4d-recon` 复现（命令本身不依赖 worktree 路径）。
 
 ## 1) Adapter 产数命令
 

@@ -1,6 +1,6 @@
 # 4D Recon MVP Recovery Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> 状态：已完成（存档）。不要再按本文执行；当前入口以 `README.md` / `notes/demo-runbook.md` 为准。
 
 **Goal:** 在 `2026-02-25` 汇报前，把当前“环境已就绪但无实验证据”的状态推进到“可演示、可复现、可答辩”的最小交付。
 

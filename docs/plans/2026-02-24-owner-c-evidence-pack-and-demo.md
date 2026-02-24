@@ -1,6 +1,6 @@
 # Evidence Pack + Demo Hardening Implementation Plan (Owner C)
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> 状态：已完成（存档）。不要再按本文执行；当前入口以 `README.md` / `notes/demo-runbook.md` 为准。
 
 **Goal:** 把“可复现证据包”产品化：一键生成 `metrics.csv`（含 Gate-0/Gate-1/T0 的关键指标与动态/梯度摘要）+ 一键打包（排除 ckpts/tb 等大文件），并在 GPU2 上跑一条 600-step SelfCap demo 作为答辩展示用视频与 stats。
 
@@ -320,4 +320,3 @@ $PY scripts/pack_evidence.py --repo_root . --out_tar outputs/report_pack_$(date 
 Expected:
 - `outputs/report_pack/metrics.csv` 更新
 - `outputs/report_pack_YYYY-MM-DD.tar.gz` 生成且非空
-

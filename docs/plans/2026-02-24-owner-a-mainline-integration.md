@@ -1,6 +1,6 @@
 # Owner A Mainline Integration Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> 状态：已完成（存档）。不要再按本文执行；当前入口以 `README.md` / `notes/demo-runbook.md` 为准。
 
 **Goal:** 把 A/B/C 已验收的成果合流到一个“可作为主阵地基线”的集成分支，并把入口脚本/文档/复现脚本默认值统一到可直接跑的状态（不依赖手工改路径）。
 
@@ -278,4 +278,3 @@ Expected:
 说明：
 - 若 stash 内容是“过时/重复”的旧文件（例如早期的 SelfCap 适配脚本副本），建议不要 pop；改为手动 cherry-pick 需要的文件后丢弃 stash。
 - 若 stash 是你个人临时改动且仍需要，才执行 `git stash pop` 并解决冲突。
-

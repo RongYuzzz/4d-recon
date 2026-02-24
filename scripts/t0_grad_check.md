@@ -7,8 +7,13 @@
 
 ## Run command (current audit)
 ```bash
-cd /root/projects/4d-recon/.worktrees/owner-c-20260224
+cd /root/projects/4d-recon
 source /root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/activate
+mkdir -p outputs/t0_selfcap
+python third_party/FreeTimeGsVanilla/src/combine_frames_fast_keyframes.py \
+  --input-dir data/selfcap_bar_8cam60f/triangulation \
+  --output-path outputs/t0_selfcap/keyframes_60frames_step5.npz \
+  --frame-start 0 --frame-end 59 --keyframe-step 5
 CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
   --data-dir /root/projects/4d-recon/data/selfcap_bar_8cam60f \
   --init-npz-path outputs/t0_selfcap/keyframes_60frames_step5.npz \
