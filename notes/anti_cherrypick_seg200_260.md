@@ -76,3 +76,16 @@ ours-weak (`cam09`):
 失败模式观察：
 - 与主段相同，弱融合增益量级偏小（非数量级提升）；
 - 未出现新型不稳定（NaN、明显训练发散、全黑/全白 cue）。
+
+## 5) A30（feature_loss_v1 on seg2）状态
+
+截至 2026-02-24 本分支收口时，仓库 `main` 与当前 worktree 均未包含
+`scripts/run_train_feature_loss_selfcap.sh`，且训练器中也尚未合入
+feature-metric-loss 对应配置/损失路径，因此 `seg2 feature_loss_v1_600`
+暂不可执行。
+
+触发条件（恢复执行 A30）：
+- Owner B 合入 feature-loss 主线（至少包含可运行 runner 与 trainer loss 开关）；
+- 在同一 seg2 数据与 600-step 预算下补跑：
+  - `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600`
+- 将 test@step599 指标追加到本文档，形成 baseline vs feature_loss_v1 的 anti-cherrypick 证据。
