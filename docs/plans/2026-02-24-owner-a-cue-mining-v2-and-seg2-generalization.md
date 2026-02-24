@@ -1,6 +1,6 @@
 # Owner A Cue Mining V2 + Seg2 Generalization Plan (Next)
 
-> 状态：待执行（Next）。本计划面向 `2026-02-26` 起的后续推进（多场景/可解释 cue mining），不影响当前 `docs/protocol.yaml`（v1）midterm 口径。
+> 状态：部分已完成（截至 `2026-02-24`：`A23-A28` 已完成；剩余 `A24b`（overlay 扩充）/ `A29`（速度统计页）/ `A30`（seg2 feature_loss，对 B 合并有弱依赖））。本计划面向 `2026-02-26` 起的后续推进（多场景/可解释 cue mining），不影响当前 `docs/protocol.yaml`（v1）midterm 口径。
 
 我在使用 **writing-plans** skill 来写这份计划。未使用 brainstorming skill 的原因：本阶段目标与约束已在 `docs/execution/2026-02-12-4d-reconstruction-execution.md#6-2026-02-26-起后续推进路线` 与 `docs/protocol.yaml` 中明确，直接落到可执行任务更省时间。
 
@@ -17,7 +17,22 @@
 
 ---
 
-## Task A23: 创建隔离 Worktree/分支
+## 现状（Reality Check，便于并行推进）
+
+- 已存在隔离 worktree：`.worktrees/owner-a-20260224-cuev2-seg2`
+- cue mining 已具备结构化质量产物：`quality.json` + `scripts/tests/test_cue_mining_quality_stats.py`
+- `--backend vggt` 已可运行且有审计记录：`notes/vggt_setup.md`
+- seg2 anti-cherrypick 已完成（baseline vs ours-weak，600 steps）：`notes/anti_cherrypick_seg200_260.md`
+- seg2 协议已冻结（仅改帧段/数据 root）：`docs/protocols/protocol_v1_seg200_260.yaml`
+
+本计划的新增交付主要集中在：
+- cue overlay 扩充（更快定位坐标系/值域问题）
+- `||v||` 速度统计页（答辩防守证据）
+- （可选）seg2 上补跑 feature_loss（对齐 B 的主线）
+
+---
+
+## Task A23: 创建隔离 Worktree/分支（DONE）
 
 Run:
 ```bash
@@ -31,7 +46,7 @@ Expected:
 
 ---
 
-## Task A24: Cue Mining “质量诊断”产物（让 stoploss 可机器判定）
+## Task A24: Cue Mining “质量诊断”产物（DONE，尚需补 overlay 扩充）
 
 动机：
 - 当前 cue mining（`scripts/cue_mining.py`）输出 `pseudo_masks.npz` + 2 张 viz，但缺少“质量指标/失败信号”的结构化输出，导致后续多场景扩展时排查成本高。
@@ -42,24 +57,28 @@ Expected:
 - Create: `scripts/tests/test_cue_mining_quality_stats.py`
 - Update: `notes/cue_mining_spec.md`
 
-**Step 1: 在 cue mining 输出目录新增 `quality.json`（MVP keys）**
-- 写入：
+**Step 1: `quality.json`（DONE）**
+- 现已写入：
   - `mask_mean_per_t`（长度 T 的列表，0..1）
   - `mask_mean_per_view`（长度 V）
   - `mask_min` / `mask_max`
   - `temporal_flicker_l1_mean`（基于 `|mask[t]-mask[t-1]|` 的均值）
   - `all_black` / `all_white`（硬止损信号）
 
-**Step 2: `run_cue_mining.sh` 打印质量摘要**
+**Step 2: `run_cue_mining.sh` 打印质量摘要（DONE）**
 - 输出一行 summary（便于 log grep）：mask mean/min/max、flicker、black/white flags。
 
-**Step 3: Cue 对齐 sanity（输出更多 overlay，降低“看起来有但训练没用”的风险）**
-- 在 `viz/` 下额外输出一小组固定命名的 overlay（例如每个 cam 抽 2 帧）：
-  - `overlay_<cam>_frame000000.jpg`
-  - `overlay_<cam>_frame000030.jpg`
+**Step 3: Cue 对齐 sanity overlay 扩充（TODO，不影响现有契约）**
+- 当前已产出：
+  - `viz/overlay_cam02_frame000000.jpg`
+  - `viz/grid_frame000000.jpg`
+- 需要补齐（不破坏已有输出文件名）：
+  - 对每个 cam 额外输出少量固定命名的 overlay（例如每 cam 抽 2 帧）：
+    - `overlay_cam<cam>_frame000000.jpg`
+    - `overlay_cam<cam>_frame000030.jpg`
 - 目的：快速确认 cam/frame 索引、resize/坐标系、值域方向（dynamic=1 还是 static=1）没有反。
 
-**Step 4: 单测（不依赖 pytest）**
+**Step 4: 单测（DONE，不依赖 pytest）**
 - 用现有 `scripts/tests/test_cue_mining_contract.py` 的 synthetic 数据路径复用/或新建极小 synthetic；
 - 断言 `quality.json` 存在且 keys 完整，`all_black/all_white` 为 bool。
 
@@ -68,7 +87,7 @@ Expected:
 
 ---
 
-## Task A25 (Timebox 1d): VGGT backend 再尝试，但必须“可审计止损”
+## Task A25 (Timebox 1d): VGGT backend 再尝试，但必须“可审计止损”（DONE）
 
 动机：
 - 论文叙事希望从 “纯帧差分” 走向 “training-free 语义 cue/attention”，VGGT 是优先路线。
@@ -93,7 +112,7 @@ Expected:
 
 ---
 
-## Task A26: Second Segment 数据集（anti-cherrypick）生成
+## Task A26: Second Segment 数据集（anti-cherrypick）生成（DONE）
 
 选择：
 - 同一 SelfCap bar（`bar-release.tar.gz`），不同帧段，例如 `frame_start=200 num_frames=60`。
@@ -124,7 +143,7 @@ $PY scripts/adapt_selfcap_release_to_freetime.py \
 
 ---
 
-## Task A27: Seg2 上对比实验（同预算 600-step）
+## Task A27: Seg2 上对比实验（同预算 600-step）（DONE：baseline vs ours-weak）
 
 原则（避免 cherry-pick）：
 - Seg2 **不允许**为了“让 seg2 更好看”而重调超参；必须复用主段（v1）最终拍板的弱融合参数（例如 `PSEUDO_MASK_WEIGHT/PSEUDO_MASK_END_STEP`）。
@@ -173,7 +192,7 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 
 ---
 
-## Task A28: 写入 “anti-cherrypick” 记录与结论（供 C 打包）
+## Task A28: 写入 “anti-cherrypick” 记录与结论（供 C 打包）（DONE）
 
 **Files:**
 - Create: `notes/anti_cherrypick_seg200_260.md`
@@ -227,3 +246,20 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 验收：
 - `notes/velocity_stats_selfcap_bar_8cam60f.md` 可直接被 C 纳入 evidence pack；
 - 该页至少包含 step0 与 step599 的对比（step100 作为可选增强）。
+
+---
+
+## Task A30（可选，弱依赖 B）：Seg2 上补跑 feature_loss_v1（对齐主线）
+
+动机：
+- seg2 目前只做了 baseline vs ours-weak。若 B 的 feature_loss_v1 成为主线，需要在 seg2 上补一条 “anti-cherrypick: baseline vs feature_loss_v1” 的证据，避免只在主段成立。
+
+前置：
+- `scripts/run_train_feature_loss_selfcap.sh` 已合入 `main`（由 Owner B 交付）。
+
+Runs（GPU0）：
+- `DATA_DIR=data/selfcap_bar_8cam60f_seg200_260`
+- `RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/feature_loss_v1_600`
+
+验收：
+- `notes/anti_cherrypick_seg200_260.md` 追加一段 feature_loss_v1 的 test@step599 指标与结论（不需要重写全文）。

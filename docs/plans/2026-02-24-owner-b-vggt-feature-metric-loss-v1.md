@@ -32,7 +32,32 @@ Expected:
 **Files:**
 - Update: `notes/vggt_setup.md`（若有新增依赖/权重路径/性能数据）
 
-**Step 1: 在 canonical 数据上跑一次 vggt backend smoke（只做 health check）**
+备注：
+- 若 `notes/vggt_setup.md` 已在**同一机器 + 同一 venv**（`third_party/FreeTimeGsVanilla/.venv`）完成验收，则本任务可直接视为 DONE，避免与 A 的 cue mining 线发生不必要耦合。
+
+**Step 1: 最小 health check（不依赖 cue mining 脚本）**
+
+Run:
+```bash
+cd /root/projects/4d-recon/.worktrees/owner-b-20260224-vggt-feature-loss-v1
+export HF_HUB_DISABLE_XET=1
+/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python - <<'PY'
+import torch
+from vggt.models.vggt import VGGT
+
+print("cuda:", torch.cuda.is_available())
+model = VGGT.from_pretrained("facebook/VGGT-1B")
+model.eval()
+for p in model.parameters():
+    p.requires_grad_(False)
+print("VGGT loaded OK")
+PY
+```
+
+Expected:
+- 打印 `VGGT loaded OK`。
+
+**Step 2（可选）: 复用 cue mining 的端到端 smoke（仅当你怀疑环境漂移）**
 
 Run:
 ```bash
@@ -42,9 +67,6 @@ export HF_HUB_DISABLE_XET=1
 GPU=1 OUT_DIR=outputs/cue_mining/selfcap_bar_8cam60f_vggt_healthcheck \
   bash scripts/run_cue_mining.sh data/selfcap_bar_8cam60f selfcap_bar_8cam60f_vggt_healthcheck 0 2 vggt 4
 ```
-
-Expected:
-- `outputs/cue_mining/selfcap_bar_8cam60f_vggt_healthcheck/pseudo_masks.npz` 存在。
 
 ---
 
@@ -213,4 +235,3 @@ Runner 约束：
 
 **交付：**
 - Update: `notes/feature_loss_v1_attempt.md`（写清 cache tag、flags、吞吐、指标与失败分析）
-
