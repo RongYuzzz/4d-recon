@@ -2,7 +2,9 @@ import ast
 import sys
 from pathlib import Path
 
-trainer = Path('/root/projects/4d-recon/third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py')
+# Resolve repo root from this test file so it works across machines/workdirs.
+repo_root = Path(__file__).resolve().parents[2]
+trainer = repo_root / 'third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py'
 source = trainer.read_text(encoding='utf-8')
 module = ast.parse(source)
 

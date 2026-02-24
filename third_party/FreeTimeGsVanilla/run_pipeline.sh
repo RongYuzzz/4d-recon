@@ -27,6 +27,12 @@ CONFIG=${8:-default_keyframe_small}  # Config name (default: default_keyframe_sm
 FORCE_ZERO_VELOCITY_FOR_T0=${FORCE_ZERO_VELOCITY_FOR_T0:-0}
 T0_DEBUG_INTERVAL=${T0_DEBUG_INTERVAL:-0}
 T0_GRAD_LOG_PATH=${T0_GRAD_LOG_PATH:-}
+MAX_STEPS=${MAX_STEPS:-30000}
+EVAL_STEPS=${EVAL_STEPS:-$MAX_STEPS}
+SAVE_STEPS=${SAVE_STEPS:-$MAX_STEPS}
+RENDER_TRAJ_PATH=${RENDER_TRAJ_PATH:-}
+RENDER_TRAJ_TIME_FRAMES=${RENDER_TRAJ_TIME_FRAMES:-}
+EXTRA_TRAIN_ARGS=${EXTRA_TRAIN_ARGS:-}
 
 # Validate arguments
 if [ -z "$INPUT_DIR" ] || [ -z "$DATA_DIR" ] || [ -z "$RESULT_DIR" ] || [ -z "$START_FRAME" ] || [ -z "$END_FRAME" ] || [ -z "$KEYFRAME_STEP" ] || [ -z "$GPU_ID" ]; then
@@ -64,9 +70,15 @@ echo "Keyframe step:  $KEYFRAME_STEP"
 echo "GPU:            $GPU_ID"
 echo "Config:         $CONFIG"
 echo "NPZ output:     $NPZ_PATH"
+echo "Max steps:      $MAX_STEPS"
+echo "Eval steps:     $EVAL_STEPS"
+echo "Save steps:     $SAVE_STEPS"
 echo "T0 zero-v:      $FORCE_ZERO_VELOCITY_FOR_T0"
 echo "T0 debug intv:  $T0_DEBUG_INTERVAL"
 echo "T0 grad log:    ${T0_GRAD_LOG_PATH:-<disabled>}"
+echo "Render traj:    ${RENDER_TRAJ_PATH:-<default>}"
+echo "Render t-frames:${RENDER_TRAJ_TIME_FRAMES:-<default>}"
+echo "Extra args:     ${EXTRA_TRAIN_ARGS:-<none>}"
 echo "========================================"
 
 # Create result directory
@@ -89,6 +101,7 @@ echo "Step 2: Training 4D Gaussians..."
 echo "========================================"
 
 EXTRA_ARGS=()
+EXTRA_TRAIN_ARGS_ARR=()
 if [ "$FORCE_ZERO_VELOCITY_FOR_T0" = "1" ]; then
     EXTRA_ARGS+=(--force-zero-velocity-for-t0)
 fi
@@ -98,6 +111,15 @@ fi
 if [ -n "$T0_GRAD_LOG_PATH" ]; then
     EXTRA_ARGS+=(--t0-grad-log-path "$T0_GRAD_LOG_PATH")
 fi
+if [ -n "$RENDER_TRAJ_PATH" ]; then
+    EXTRA_ARGS+=(--render-traj-path "$RENDER_TRAJ_PATH")
+fi
+if [ -n "$RENDER_TRAJ_TIME_FRAMES" ]; then
+    EXTRA_ARGS+=(--render-traj-time-frames "$RENDER_TRAJ_TIME_FRAMES")
+fi
+if [ -n "$EXTRA_TRAIN_ARGS" ]; then
+    read -r -a EXTRA_TRAIN_ARGS_ARR <<< "$EXTRA_TRAIN_ARGS"
+fi
 
 # Step 2: Train
 CUDA_VISIBLE_DEVICES=$GPU_ID python src/simple_trainer_freetime_4d_pure_relocation.py $CONFIG \
@@ -106,10 +128,11 @@ CUDA_VISIBLE_DEVICES=$GPU_ID python src/simple_trainer_freetime_4d_pure_relocati
     --result-dir "$RESULT_DIR" \
     --start-frame "$START_FRAME" \
     --end-frame "$END_FRAME" \
-    --max-steps 30000 \
-    --eval-steps 30000 \
-    --save-steps 30000 \
-    "${EXTRA_ARGS[@]}"
+    --max-steps "$MAX_STEPS" \
+    --eval-steps "$EVAL_STEPS" \
+    --save-steps "$SAVE_STEPS" \
+    "${EXTRA_ARGS[@]}" \
+    "${EXTRA_TRAIN_ARGS_ARR[@]}"
 
 echo ""
 echo "========================================"
