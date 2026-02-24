@@ -1,8 +1,14 @@
-# Owner C Midterm Evidence + Ablations Plan (GPU2)
+# Midterm Evidence + Ablations Implementation Plan (Owner C, GPU2)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 把 midterm 需要的“可交付五件套”在主阵地固化为可复现证据与材料：Baseline 稳定长跑、关键 ablation（先基线敏感性，后接 weak/strong）、失败案例整理、以及一键离线证据包（含 hash manifest）。
+
+**Architecture:** 以 `data/selfcap_bar_8cam60f` 为单场景固定输入，GPU2 产出 baseline 600-step run；随后用 `scripts/build_report_pack.py` 生成 `metrics.csv`，补齐 `ablation_notes.md` / `failure_cases.md`；最后用 `scripts/pack_evidence.py` 生成可离线校验的 tar.gz（sha256 manifest）。本分支不修改 trainer 主文件，避免与 A/B 的算法接入冲突。
+
+**Tech Stack:** Bash, Python, `third_party/FreeTimeGsVanilla/run_pipeline.sh`, `scripts/build_report_pack.py`, `scripts/pack_evidence.py`
+
+---
 
 **Scope 对齐：**本计划对应 `docs/execution/2026-02-12-4d-reconstruction-execution.md` 的 Task 11（证据打包）与 midterm 汇报准备。不会实现 cue mining / weak/strong 融合算法本体（由 A/B 负责）。
 
