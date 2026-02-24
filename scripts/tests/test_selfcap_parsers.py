@@ -10,13 +10,36 @@ import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
+DATASETS_DIR = REPO_ROOT / "third_party" / "FreeTimeGsVanilla" / "datasets"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+if str(DATASETS_DIR) not in sys.path:
+    sys.path.insert(0, str(DATASETS_DIR))
 
 import adapt_selfcap_release_to_freetime as adapter
+from read_write_model import read_model
 
 
 class SelfCapParserTests(unittest.TestCase):
+    def test_ensure_empty_or_overwrite_rejects_non_empty_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td) / "out_dir"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "DO_NOT_TOUCH").write_text("sentinel", encoding="utf-8")
+            with self.assertRaises((RuntimeError, ValueError)):
+                adapter.ensure_empty_or_overwrite(out_dir, overwrite=False)
+
+    def test_ensure_empty_or_overwrite_cleans_known_outputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td) / "out_dir"
+            (out_dir / "images").mkdir(parents=True, exist_ok=True)
+            (out_dir / "triangulation").mkdir(parents=True, exist_ok=True)
+            (out_dir / "images" / "old.jpg").write_text("old", encoding="utf-8")
+            (out_dir / "triangulation" / "old.npy").write_text("old", encoding="utf-8")
+            adapter.ensure_empty_or_overwrite(out_dir, overwrite=True)
+            self.assertFalse((out_dir / "images" / "old.jpg").exists())
+            self.assertFalse((out_dir / "triangulation" / "old.npy").exists())
+
     def test_parse_opencv_yml_mats(self):
         text = """%YAML:1.0
 K_02: !!opencv-matrix
@@ -96,6 +119,42 @@ T_02: !!opencv-matrix
             self.assertTrue((out_dir / "cameras.bin").exists())
             self.assertTrue((out_dir / "images.bin").exists())
             self.assertTrue((out_dir / "points3D.bin").exists())
+
+    def test_write_colmap_sparse0_uses_opencv_when_distortion_present(self):
+        camera_ids = ["02"]
+        K = {
+            "K_02": np.array(
+                [[1200.0, 0.0, 640.0], [0.0, 1000.0, 360.0], [0.0, 0.0, 1.0]]
+            ),
+            "dist_02": np.array([[0.1, 0.01, 0.001, -0.002, 0.0]], dtype=np.float64),
+        }
+        Rot = {"Rot_02": np.eye(3)}
+        T = {"T_02": np.zeros((3, 1))}
+        xyz = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
+        rgb = np.array([[255.0, 128.0, 0.0]], dtype=np.float32)
+
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td) / "sparse" / "0"
+            adapter.write_colmap_sparse0(
+                out_sparse_dir=out_dir,
+                camera_ids=camera_ids,
+                intrinsics=K,
+                rotations=Rot,
+                translations=T,
+                points_xyz=xyz,
+                points_rgb=rgb,
+                image_width=1280,
+                image_height=720,
+                image_downscale=2,
+            )
+            cameras, _, _ = read_model(str(out_dir), ext=".bin")
+            cam = cameras[1]
+            self.assertEqual(cam.model, "OPENCV")
+            self.assertEqual(len(cam.params), 8)
+            self.assertAlmostEqual(float(cam.params[0]), 600.0)  # fx / 2
+            self.assertAlmostEqual(float(cam.params[1]), 500.0)  # fy / 2
+            self.assertAlmostEqual(float(cam.params[2]), 320.0)  # cx / 2
+            self.assertAlmostEqual(float(cam.params[3]), 180.0)  # cy / 2
 
 
 if __name__ == "__main__":

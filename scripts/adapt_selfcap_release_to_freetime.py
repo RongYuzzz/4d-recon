@@ -34,6 +34,28 @@ _PLY_DTYPES = {
 }
 
 
+def ensure_empty_or_overwrite(out_root: Path, overwrite: bool) -> None:
+    if not out_root.exists():
+        return
+    if not out_root.is_dir():
+        raise ValueError(f"Output path exists but is not a directory: {out_root}")
+
+    has_entries = any(out_root.iterdir())
+    if not has_entries:
+        return
+
+    if not overwrite:
+        raise RuntimeError(
+            f"Output directory is not empty: {out_root}. "
+            "Use --overwrite to clean known adapter outputs."
+        )
+
+    for sub in ("images", "sparse", "triangulation"):
+        target = out_root / sub
+        if target.exists():
+            shutil.rmtree(target)
+
+
 def parse_opencv_yml_mats(text: str) -> dict[str, np.ndarray]:
     mats: dict[str, np.ndarray] = {}
     for match in _OPENCV_MATRIX_PATTERN.finditer(text):
@@ -163,12 +185,27 @@ def write_colmap_sparse0(
         cx = float(K[0, 2]) / image_downscale
         cy = float(K[1, 2]) / image_downscale
 
+        dist_key = f"dist_{cam}"
+        dist = intrinsics.get(dist_key, np.zeros((1, 5), dtype=np.float64)).reshape(-1)
+        if dist.size < 4:
+            dist = np.pad(dist, (0, 4 - dist.size), mode="constant")
+        use_opencv = np.max(np.abs(dist[:4])) > 1e-12
+        if use_opencv:
+            model = "OPENCV"
+            params = np.array(
+                [fx, fy, cx, cy, float(dist[0]), float(dist[1]), float(dist[2]), float(dist[3])],
+                dtype=np.float64,
+            )
+        else:
+            model = "PINHOLE"
+            params = np.array([fx, fy, cx, cy], dtype=np.float64)
+
         cameras[camera_id] = Camera(
             id=camera_id,
-            model="PINHOLE",
+            model=model,
             width=int(image_width),
             height=int(image_height),
-            params=np.array([fx, fy, cx, cy], dtype=np.float64),
+            params=params,
         )
 
         R = rotations[rot_key].reshape(3, 3).astype(np.float64)
@@ -310,6 +347,28 @@ def main() -> None:
     ap.add_argument("--image_downscale", type=int, default=2)
     ap.add_argument("--max_points", type=int, default=200000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--no_images",
+        action="store_true",
+        help="Skip video decoding and only export triangulation + sparse outputs",
+    )
+    ap.add_argument(
+        "--image_width",
+        type=int,
+        default=0,
+        help="Required with --no_images",
+    )
+    ap.add_argument(
+        "--image_height",
+        type=int,
+        default=0,
+        help="Required with --no_images",
+    )
+    ap.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow cleaning existing images/sparse/triangulation under output_dir",
+    )
     args = ap.parse_args()
 
     tar_path = Path(args.tar_gz)
@@ -322,10 +381,14 @@ def main() -> None:
         raise ValueError("--image_downscale must be >= 1")
     if not tar_path.exists():
         raise FileNotFoundError(f"Tarball not found: {tar_path}")
+    if args.no_images and (args.image_width <= 0 or args.image_height <= 0):
+        raise ValueError("--no_images requires --image_width and --image_height > 0")
 
     camera_ids = [c.strip() for c in args.camera_ids.split(",") if c.strip()]
     if not camera_ids:
         raise ValueError("--camera_ids is empty")
+
+    ensure_empty_or_overwrite(out_root, overwrite=args.overwrite)
 
     images_dir = out_root / "images"
     sparse0_dir = out_root / "sparse" / "0"
@@ -348,12 +411,17 @@ def main() -> None:
         extrinsics = parse_opencv_yml_mats(_read_tar_text(tf, "bar-release/optimized/extri.yml"))
 
         for cam in camera_ids:
+            cam_image_dir = images_dir / cam
+            cam_image_dir.mkdir(parents=True, exist_ok=True)
+            if args.no_images:
+                continue
+
             video_member = f"bar-release/videos/{cam}.mp4"
             tmp_video = _extract_tar_member_to_tempfile(tf, video_member, suffix=f"_{cam}.mp4")
             try:
                 w, h = extract_video_frames(
                     video_path=tmp_video,
-                    out_dir=images_dir / cam,
+                    out_dir=cam_image_dir,
                     frame_start=args.frame_start,
                     num_frames=args.num_frames,
                     downscale=args.image_downscale,
@@ -388,6 +456,9 @@ def main() -> None:
 
     if first_frame_xyz is None or first_frame_rgb is None:
         raise ValueError("Selected frame range has no valid points for sparse/0 points3D")
+    if args.no_images:
+        image_width = args.image_width
+        image_height = args.image_height
     if image_width is None or image_height is None:
         raise ValueError("No video frames extracted")
 
