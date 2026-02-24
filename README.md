@@ -1,6 +1,6 @@
 # 4D Reconstruction Workspace
 
-This workspace tracks the execution of `/root/2026-02-12-4d-reconstruction-execution.md`.
+This workspace tracks the execution of `docs/execution/2026-02-12-4d-reconstruction-execution.md`.
 
 Day-to-day runnable commands live in `README.md` + `notes/demo-runbook.md`.
 

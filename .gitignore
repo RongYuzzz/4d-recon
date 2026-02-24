@@ -22,6 +22,9 @@ data/*
 outputs/*
 !outputs/.gitkeep
 
+# Local artifacts (evidence packs, large binaries)
+artifacts/report_packs/*.tar.gz
+
 # Logs / temp
 *.log
 *.tmp

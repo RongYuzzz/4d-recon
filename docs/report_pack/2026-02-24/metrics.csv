@@ -1,0 +1,2 @@
+run_dir,gate,dataset,step,psnr,ssim,lpips,num_gs,notes
+outputs/gate1_selfcap_demo_600,gate1,selfcap_demo_600,599,18.809246063232422,0.6655025482177734,0.40724632143974304,92749,
