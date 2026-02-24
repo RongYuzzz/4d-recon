@@ -174,3 +174,14 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 
 验收：
 - C 可直接用文档与 `outputs/report_pack/metrics.csv` 做最终证据包。
+
+---
+
+## Execution Status (2026-02-24)
+
+- B23: 完成（worktree：`/root/projects/4d-recon/.worktrees/owner-b-20260224-strong-v2`）。
+- B24: 完成（`notes/attention_loss_design.md`、`notes/strong_fusion_v2_temporal_consistency.md`）。
+- B25: 完成（trainer+脚本+测试，`python3 scripts/tests/test_strong_fusion_flags.py` PASS）。
+- B26: 完成（KLT FB+weight+契约测试，`python3 scripts/tests/test_temporal_correspondences_klt_contract.py` PASS；新输出 `outputs/correspondences/selfcap_bar_8cam60f_klt_fb_v2/temporal_corr.npz`）。
+- B27: 完成（`ours_strong_v2_smoke60`、sweep3组、`ours_strong_v2_600` 均完成；`val/test_step0599.json` 与 `traj_4d_step599.mp4` 已生成；`outputs/report_pack/metrics.csv` 已刷新并包含 v2 条目）。
+- B28: 完成（`notes/ours_strong_attempt_selfcap_bar.md` 已追加 v2 对比与 stoploss 结论）。

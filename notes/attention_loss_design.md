@@ -1,82 +1,84 @@
-# Strong Fusion Prep: Temporal Correspondence Contract + Loss Design
+# Strong Fusion: Temporal Correspondence Contract + V2 Loss Design
 
-日期：2026-02-24
+日期：2026-02-24  
 作者：Owner B
 
 ## 1) Temporal Correspondence NPZ 契约（`temporal_corr.npz`）
 
-本契约用于 strong-fusion 的时序监督输入，先约束 I/O，再替换对应来源。
+本契约用于 strong fusion 的时序监督输入。对应来源可替换（KLT/VGGT），但训练侧只依赖该契约。
 
 必选 keys（最小集合）：
-
 - `camera_names`: `str[V]`
-  - 与 `data_dir/images/` 子目录一一对应，按字典序排序。
 - `frame_start`: `int`
-  - 源序列起始帧（对应 `images/<cam>/%06d.jpg`）。
 - `num_frames`: `int`
-  - 使用的帧数（覆盖 `[frame_start, frame_start + num_frames)`）。
 - `image_width`, `image_height`: `int`
-  - 像素尺寸，供后续归一化/采样边界检查。
 - `src_cam_idx`: `int16[N]`
-  - 源点所属相机下标，索引到 `camera_names`。
 - `src_frame_offset`: `int16[N]`
-  - 源点相对 `frame_start` 的帧偏移（0-based）。
 - `dst_frame_offset`: `int16[N]`
-  - 目标点相对 `frame_start` 的帧偏移；当前默认只做 `t -> t+1`。
 - `src_xy`: `float32[N,2]`
-  - 源像素坐标 `(x, y)`。
 - `dst_xy`: `float32[N,2]`
-  - 目标像素坐标 `(x', y')`。
 - `weight`: `float32[N]`
-  - 对应权重，当前默认 `1.0`；后续可注入置信度/遮挡过滤。
 
 约束：
+- 所有一维数组长度一致为 `N`。
+- `src_xy/dst_xy` 坐标均在像素边界内。
+- 当前默认仅 cam 内时序对应（不做跨相机对应）。
+- `weight` 取值范围约束在 `[0, 1]`。
 
-- `N` 为全局对应总数，所有 1D key 长度一致。
-- `src_xy/dst_xy` 坐标必须在 `[0, width) x [0, height)`。
-- 暂不引入跨相机对应；默认仅单相机时序对应（cam 内追踪）。
+## 2) Strong Loss 模式定义（v1 对照 + v2 目标）
 
-## 2) 对应来源策略
+令 `i` 为对应索引，`rho` 为鲁棒函数（默认 L1，可切 Charbonnier/Huber）。
 
-- 当前兜底实现：OpenCV KLT (`goodFeaturesToTrack + calcOpticalFlowPyrLK`)。
-- 目标实现：VGGT attention/top-k 对应。
+- v1（`pred_gt`，历史对照）  
+  `L_corr_v1 = mean_i [ w_i * rho( I_pred(t, src_xy_i) - I_gt(t', dst_xy_i) ) ]`
+- v2（`pred_pred`，本轮目标）  
+  `L_corr_v2 = mean_i [ w_i * rho( I_pred(t, src_xy_i) - I_pred(t', dst_xy_i) ) ]`
 
-策略要求：
+其中 `pred_pred` 需要在 `t'` 额外做一次 rasterize。
 
-- 上游来源可替换，但 NPZ 契约不变。
-- 下游训练只依赖契约 keys，不依赖来源细节。
+## 3) 时间归一化口径（必须与 dataset 对齐）
 
-## 3) Strong Fusion Loss 最小版本
+与 `FreeTime_dataset.py` 保持同口径：
+- `total_frames = end_frame - start_frame`
+- `denom = max(total_frames - 1, 1)`
+- `t = src_frame_offset / denom`
+- `t' = dst_frame_offset / denom`
 
-先实现 flow-warp photometric 监督：
+若使用全局帧号，则先转 offset：  
+`frame_offset = frame_id - start_frame`。
 
-`L_corr = mean_i w_i * | I_pred(src, x_i) - I_gt(dst, x'_i) |`
+## 4) 采样策略（每 step 对应上限 + 随机子采样）
 
-说明：
+目标是降低 step-time 波动并避免固定前缀偏置：
+- 每 step 使用 `TEMPORAL_CORR_MAX_PAIRS` 上限。
+- 当候选数大于上限时做随机子采样（每 step 重采样）。
+- 结合 `TEMPORAL_CORR_END_STEP` timebox，仅在前期启用 strong。
 
-- `x_i` 来自 `src_xy[i]`，`x'_i` 来自 `dst_xy[i]`。
-- `w_i` 来自 `weight[i]`。
-- 第一版只做 L1，后续可替换 Charbonnier/Huber。
+建议：
+- smoke: `max_pairs=200`, `end_step=60`
+- sweep/full: `max_pairs=200`, `end_step=200`
 
-默认关闭策略（必须）：
+## 5) KLT 置信度权重（forward-backward）
 
-- `--lambda-corr` 默认 `0.0`（即关闭）。
-- 仅当显式开启时生效。
-- 只在前 `N` 步（建议 2k）启用，后期自动衰减或关闭，避免后期纹理劣化。
+对每个 track 点计算前后向误差：
+- `fb_err = || p0 - p0_back ||_2`
 
-## 4) 验收口径
+过滤与权重：
+- keep 条件：`fb_err < fb_err_thresh`
+- 建议权重：`w = exp(-fb_err / sigma)`，再 clip 到 `[w_min, 1.0]`
 
-1. 训练稳定性：
-- 无 NaN、无 OOM、训练可完整跑到目标 steps。
+推荐默认：
+- `fb_err_thresh = 1.5`
+- `sigma = 1.5`
+- `w_min = 0.05`
 
-2. 动态性不退化：
-- `velocity` 分布不退化到全 0（`nonzero count > 0`）。
+## 6) Stoploss 口径（任一触发即停）
 
-3. 主观时序质量：
-- 相比 baseline，flicker/断裂减少（即使指标提升不明显也可接受）。
+- step time 相对 weak/baseline 明显翻倍，且在 50~100 step 窗口无回落趋势。
+- `corr_pairs == 0` 或频繁退化到极低值。
+- 在同预算（200/600 step）下，指标与视觉均无改善，且 failure 机理可解释。
 
-## 5) 实施顺序建议
+## 7) 默认安全策略
 
-1. 先交付可复现 KLT 预计算脚本与可视化证据。
-2. 再在 trainer 侧只接入读取与 loss gating（默认关闭）。
-3. 最后做小规模 sweep，按统一 `metrics.csv` 汇总。
+- `lambda_corr=0` 时 strong 完全不生效，不影响 baseline/weak 可复现性。
+- 默认模式保留 `pred_gt`，仅显式设置 `temporal_corr_loss_mode=pred_pred` 才启用 v2。
