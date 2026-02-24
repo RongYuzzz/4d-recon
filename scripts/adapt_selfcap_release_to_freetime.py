@@ -12,7 +12,6 @@ import tempfile
 from pathlib import Path
 from typing import BinaryIO
 
-import cv2
 import numpy as np
 
 _OPENCV_MATRIX_PATTERN = re.compile(
@@ -207,6 +206,14 @@ def extract_video_frames(
     num_frames: int,
     downscale: int,
 ) -> tuple[int, int]:
+    try:
+        import cv2  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "Missing dependency: cv2. Install with `python -m pip install opencv-python` "
+            "to enable video frame extraction."
+        ) from exc
+
     if frame_start < 0:
         raise ValueError("frame_start must be >= 0")
     if num_frames <= 0:
