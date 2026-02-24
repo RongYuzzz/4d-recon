@@ -93,6 +93,7 @@ CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_f
 cd /root/projects/4d-recon
 PY=/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python
 $PY scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
+python3 scripts/summarize_scoreboard.py --metrics_csv outputs/report_pack/metrics.csv --out_md outputs/report_pack/scoreboard.md
 $PY scripts/pack_evidence.py --repo_root . --out_tar outputs/report_pack_$(date +%F).tar.gz
 ```
 
