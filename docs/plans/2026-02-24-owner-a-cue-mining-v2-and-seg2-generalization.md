@@ -94,7 +94,7 @@ Expected:
 
 **Files:**
 - (data only) Create: `data/selfcap_bar_8cam60f_seg200_260/`（不入库）
-- Create: `docs/protocols/protocol_v1_seg200_260.yaml`（仅作为补充协议文件，不替换 v1）
+- Create: `docs/protocols/protocol_v1_seg200_260.yaml`（仅作为 anti-cherrypick 附录协议：**与 v1 完全同参**，只改变数据 root/帧段；不替换 `docs/protocol.yaml`）
 
 Run（示例）：
 ```bash
@@ -119,6 +119,9 @@ $PY scripts/adapt_selfcap_release_to_freetime.py \
 ---
 
 ## Task A27: Seg2 上 baseline vs ours-weak（同预算 600-step）
+
+原则（避免 cherry-pick）：
+- Seg2 **不允许**为了“让 seg2 更好看”而重调超参；必须复用主段（v1）最终拍板的弱融合参数（例如 `PSEUDO_MASK_WEIGHT/PSEUDO_MASK_END_STEP`）。
 
 **Runs (GPU0):**
 - baseline：
@@ -166,4 +169,3 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 
 验收：
 - C 可直接把该文档与 seg2 的 metrics 行纳入后续 evidence pack。
-

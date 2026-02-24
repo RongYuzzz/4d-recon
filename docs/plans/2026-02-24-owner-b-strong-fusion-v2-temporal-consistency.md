@@ -52,19 +52,26 @@ Expected:
 
 **Files:**
 - Modify: `third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py`
+- Modify: `scripts/run_train_ours_strong_selfcap.sh`（把 mode 作为显式 flag 透传到 trainer）
 - Modify: `scripts/tests/test_strong_fusion_flags.py`（或新增一个脚本级 test）
 
 Step 1: 加入配置项（默认不影响 baseline/weak）
 - 新增 config（建议）：
   - `temporal_corr_loss_mode: str = "pred_gt"`，可选 `pred_gt` / `pred_pred`
 - 默认保持 `lambda_corr=0` 时完全不生效。
+- `scripts/run_train_ours_strong_selfcap.sh` 增加环境变量：
+  - `TEMPORAL_CORR_LOSS_MODE`（默认 `pred_gt`）
+  - 并向 trainer 透传：`--temporal-corr-loss-mode "$TEMPORAL_CORR_LOSS_MODE"`
 
 Step 2: 实现 `pred_pred` 分支（核心）
 - 在 `_compute_temporal_corr_loss(...)` 内：
   - 从 `dst_frame` 计算 `t_dst = (dst_frame - cfg.start_frame)/max((cfg.end_frame-cfg.start_frame)-1,1)`
-  - 调用一次 `self.rasterize_splats(..., t=t_dst, ...)` 得到 `colors_dst`
+  - 调用一次 `self.rasterize_splats(...)` 得到 `colors_dst`（第二次 render）：
+    - 相机参数使用当前 batch 的同一相机：从 `data["camtoworld"] / data["K"]` 取同一条 sample（或把 `camtoworlds/Ks/sh_degree` 作为参数从 caller 传入，避免重复搬运）
+    - `width/height/sh_degree` 与主 forward 保持一致
   - 取 `pred_src = colors[b] @ src_xy`，`pred_dst = colors_dst[b] @ dst_xy`
   - `loss = mean(|pred_src - pred_dst| * weight)`（可除以 `weight.mean()` 做归一化）
+  - 注意：该分支会让 strong step 的 render 近似翻倍；必须配合 `TEMPORAL_CORR_MAX_PAIRS` / `TEMPORAL_CORR_END_STEP` timebox，避免拖慢全局迭代。
 
 Step 3: 轻量日志（便于审计）
 - 每 N step 打印：
@@ -76,6 +83,7 @@ Step 4: 脚本级 test
 - 更新/新增 test 断言：
   - config flag 名存在
   - `pred_pred` 字符串在实现中可见（避免回归删掉）
+  - `scripts/run_train_ours_strong_selfcap.sh` 中确实透传了 `--temporal-corr-loss-mode`
 
 验收：
 - `python3 scripts/tests/test_strong_fusion_flags.py` PASS。
@@ -106,9 +114,10 @@ Step 3: 单测
   - `weight` 非全 1，且在 `[0,1]` 内
 
 验收：
-- 在 `data/selfcap_bar_8cam60f` 上重新生成：
-  - `outputs/correspondences/selfcap_bar_8cam60f_klt/temporal_corr.npz`
-  - `outputs/correspondences/selfcap_bar_8cam60f_klt/viz/*`
+- **不要覆盖** `outputs/correspondences/selfcap_bar_8cam60f_klt/temporal_corr.npz`（它可能已被历史 run 引用，覆盖会破坏可审计复现）。
+- 在 `data/selfcap_bar_8cam60f` 上生成一个带版本后缀的新 tag（示例）：
+  - `outputs/correspondences/selfcap_bar_8cam60f_klt_fb_v2/temporal_corr.npz`
+  - `outputs/correspondences/selfcap_bar_8cam60f_klt_fb_v2/viz/*`
 
 ---
 
@@ -127,7 +136,8 @@ cd /root/projects/4d-recon
 GPU=1 MAX_STEPS=60 \
 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_v2_smoke60 \
 LAMBDA_CORR=0.01 TEMPORAL_CORR_END_STEP=60 TEMPORAL_CORR_MAX_PAIRS=200 \
-STRONG_MODE=pred_pred \
+TEMPORAL_CORR_TAG=selfcap_bar_8cam60f_klt_fb_v2 \
+TEMPORAL_CORR_LOSS_MODE=pred_pred \
 bash scripts/run_train_ours_strong_selfcap.sh
 
 # sweep (200 steps)
@@ -135,7 +145,8 @@ for lam in 0.005 0.01 0.02; do
   GPU=1 MAX_STEPS=200 \
   RESULT_DIR=outputs/sweeps/selfcap_bar_strong_v2_lam${lam}_end200_pairs200_s200 \
   LAMBDA_CORR=$lam TEMPORAL_CORR_END_STEP=200 TEMPORAL_CORR_MAX_PAIRS=200 \
-  STRONG_MODE=pred_pred \
+  TEMPORAL_CORR_TAG=selfcap_bar_8cam60f_klt_fb_v2 \
+  TEMPORAL_CORR_LOSS_MODE=pred_pred \
   bash scripts/run_train_ours_strong_selfcap.sh
 done
 
@@ -145,6 +156,7 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 验收：
 - v2 的 600-step 目录存在 `stats/{val,test}_step0599.json` + `videos/traj_4d_step599.mp4`
 - `outputs/report_pack/metrics.csv` 有 v2 条目（val/test）
+- `cfg.yml` 中包含 `temporal_corr_loss_mode: pred_pred`（或等价字段），确保“确实跑的是 v2”而非默认 v1。
 
 ---
 
@@ -162,4 +174,3 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 
 验收：
 - C 可直接用文档与 `outputs/report_pack/metrics.csv` 做最终证据包。
-

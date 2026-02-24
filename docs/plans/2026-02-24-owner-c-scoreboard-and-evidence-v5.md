@@ -43,6 +43,7 @@ Expected:
   - 只选 `step=599` + `stage=test` 的行；
   - 同时兼容 `outputs/protocol_v1/selfcap_bar_8cam60f/...` 与 `outputs/protocol_v1/gate1/selfcap_bar_8cam60f/...`；
   - 输出 markdown 表格 + delta(vs baseline) 列；
+  - 当存在多个 strong 变体（如 `ours_strong_600` / `ours_strong_v2_600`）时，不会因为“只认一个 basename”而漏报；
   - 当 `tlpips` 为空时不崩溃（以 `-` 或空值展示）。
 
 **Step 2: 跑测试确认失败**
@@ -61,12 +62,14 @@ Expected:
   - `--out_md outputs/report_pack/scoreboard.md`
   - `--protocol_id selfcap_bar_8cam60f_protocol_v1`（可选，仅用于写标题/footnote）
   - `--select_contains selfcap_bar_8cam60f`（默认值；用于同时覆盖 `.../selfcap_bar_8cam60f/...` 与 `.../gate1/selfcap_bar_8cam60f/...`）
-  - `--select_prefix outputs/protocol_v1/`（默认值；可选再加一层前缀限制，避免扫到非 protocol 产物）
+  - `--select_prefix outputs/protocol_v1/selfcap_bar_8cam60f/`（默认值；优先 canonical。必要时可改成 `outputs/protocol_v1/` 扩大范围）
   - `--step 599`（默认 599）
   - `--stage test`（默认 test）
 - 行筛选：
   - 只选 stage/step 匹配的行；
-  - 基于 `run_dir` 的 basename 识别并仅保留四条（若存在）：`baseline_600`、`ours_weak_600`、`control_weak_nocue_600`、`ours_strong_600`
+  - 以 `run_dir` 的 basename 归类后保留最小集合（若存在）：
+    - 必保留：`baseline_600`、`ours_weak_600`、`control_weak_nocue_600`
+    - strong：保留所有 `ours_strong*_600`（例如 `ours_strong_600`、`ours_strong_v2_600`），但不强制保留 `*_smoke*`
 - 输出 markdown：
   - 表格列：PSNR/SSIM/LPIPS/tLPIPS + delta(vs baseline)
   - 追加“结论要点”占位（由 C 现场填 3 行 bullet）
