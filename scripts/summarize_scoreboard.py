@@ -50,10 +50,15 @@ def _is_strong_variant(run_name: str) -> bool:
     return lower.startswith("ours_strong") and lower.endswith("_600") and "smoke" not in lower
 
 
+def _is_feature_loss_variant(run_name: str) -> bool:
+    lower = run_name.lower()
+    return lower.startswith("feature_loss_v1") and "_600" in lower
+
+
 def _keep_run(run_name: str) -> bool:
     if run_name in CORE_RUNS:
         return True
-    return _is_strong_variant(run_name)
+    return _is_strong_variant(run_name) or _is_feature_loss_variant(run_name)
 
 
 def _run_order_key(run_name: str) -> tuple[int, str]:
@@ -63,9 +68,11 @@ def _run_order_key(run_name: str) -> tuple[int, str]:
         return (1, run_name)
     if run_name == "control_weak_nocue_600":
         return (2, run_name)
-    if _is_strong_variant(run_name):
+    if _is_feature_loss_variant(run_name):
         return (3, run_name)
-    return (4, run_name)
+    if _is_strong_variant(run_name):
+        return (4, run_name)
+    return (5, run_name)
 
 
 def parse_args() -> argparse.Namespace:

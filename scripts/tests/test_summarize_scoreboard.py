@@ -95,6 +95,33 @@ def _write_metrics_csv(path: Path) -> None:
             "num_gs": "104",
             "notes": "",
         },
+        # feature-loss variants (should be included)
+        {
+            "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/feature_loss_v1_600",
+            "gate": "",
+            "dataset": "selfcap_bar_8cam60f",
+            "stage": "test",
+            "step": "599",
+            "psnr": "11.7",
+            "ssim": "0.62",
+            "lpips": "0.24",
+            "tlpips": "0.017",
+            "num_gs": "105",
+            "notes": "",
+        },
+        {
+            "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/feature_loss_v1_retry_lam0.005_s200_600",
+            "gate": "",
+            "dataset": "selfcap_bar_8cam60f",
+            "stage": "test",
+            "step": "599",
+            "psnr": "11.8",
+            "ssim": "0.63",
+            "lpips": "0.23",
+            "tlpips": "0.016",
+            "num_gs": "106",
+            "notes": "",
+        },
         # should be filtered out (smoke)
         {
             "run_dir": "outputs/protocol_v1/gate1/selfcap_bar_8cam60f/ours_strong_smoke_600",
@@ -181,6 +208,8 @@ def run_test() -> None:
             "control_weak_nocue_600",
             "ours_strong_600",
             "ours_strong_v2_600",
+            "feature_loss_v1_600",
+            "feature_loss_v1_retry_lam0.005_s200_600",
         ):
             if must not in md:
                 raise AssertionError(f"missing row: {must}")
