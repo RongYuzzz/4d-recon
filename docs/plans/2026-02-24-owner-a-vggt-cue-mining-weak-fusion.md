@@ -40,12 +40,12 @@ Spec 最小要求（MVP）：
 - 输入：`data/<dataset>/images/<cam_name>/<frame>.jpg`（复用现有 SelfCap 目录）
 - 输出目录：`outputs/cue_mining/<tag>/`
 - 输出文件（MVP）：
-  - `pseudo_masks.npz`
-    - `masks`: `uint8`，shape=`[T, V, Hm, Wm]`，值域 `{0,1}` 或 `[0,255]`
-    - `camera_names`: `str[V]`（按文件夹排序）
-    - `frame_start`: `int`
-    - `num_frames`: `int` (=T)
-    - `mask_downscale`: `int`（例如 `4`）
+  - `pseudo_masks.npz`（必须包含 keys）：
+    `masks` (`uint8`, shape=`[T, V, Hm, Wm]`, 值域 `{0,1}` 或 `[0,255]`)
+    `camera_names` (`str[V]`, 按文件夹排序)
+    `frame_start` (`int`)
+    `num_frames` (`int`, 等于 T)
+    `mask_downscale` (`int`, 例如 `4`)
   - `viz/`：至少导出 1 张 overlay 拼图（便于汇报截图），命名固定可复用
 
 验收：
@@ -77,10 +77,7 @@ Spec 最小要求（MVP）：
   - `grid_frame000000.jpg`（多视角拼图，1 张即可）
 
 **Step 4: 单测（不依赖 pytest）**
-- `test_cue_mining_contract.py`：用 `scripts/generate_synthetic_scene01.py` 生成极小数据（比如 2 cams × 3 frames），跑 cue mining 并断言：
-  - `pseudo_masks.npz` 存在
-  - `masks.ndim==4`
-  - `T/V` 与输入一致
+- `test_cue_mining_contract.py`：用 `scripts/generate_synthetic_scene01.py` 生成极小数据（比如 2 cams × 3 frames），跑 cue mining 并断言 `pseudo_masks.npz` 存在、`masks.ndim==4`、以及 `T/V` 与输入一致。
 
 验收：
 - 在 `data/selfcap_bar_8cam60f` 上可跑出 `pseudo_masks.npz + viz/`（产物不入库）
@@ -133,9 +130,9 @@ Spec 最小要求（MVP）：
   - `GPU=0`
   - `MAX_STEPS=200`（可用 env 覆盖）
   - `RENDER_TRAJ_PATH=fixed`
-- `ours_weak` 脚本额外调用：
-  1. `bash scripts/run_cue_mining.sh ...`（若 mask 不存在）
-  2. 训练时传入 `--pseudo-mask-npz outputs/cue_mining/.../pseudo_masks.npz --pseudo-mask-weight ... --pseudo-mask-end-step ...`
+- `ours_weak` 脚本额外行为：
+  - 若 mask 不存在则先运行 `bash scripts/run_cue_mining.sh ...`
+  - 训练时传入 `--pseudo-mask-npz outputs/cue_mining/.../pseudo_masks.npz --pseudo-mask-weight ... --pseudo-mask-end-step ...`
 
 验收：
 - 运行两脚本可得到两份 `outputs/<exp>/videos/traj_4d_step*.mp4` + `stats/val_step*.json`
@@ -164,4 +161,3 @@ Step 2: 提交（不包含 data/ 与 outputs/）
 Step 3: 合并回 `main`（建议由 A 执行，确保单点集成）
 
 Step 4 (Optional): 若需要协作/多机同步，执行 `git push origin main`
-
