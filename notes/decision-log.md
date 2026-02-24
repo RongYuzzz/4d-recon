@@ -133,4 +133,4 @@
 - 新增可复现实验入口：
   - `scripts/run_train_baseline_selfcap.sh`
   - `scripts/run_train_ours_weak_selfcap.sh`
-  - 默认资源：`GPU=0`、`MAX_STEPS=200`、`RENDER_TRAJ_PATH=fixed`。
+  - 默认协议 full run：`GPU=0`、`MAX_STEPS=600`、`RENDER_TRAJ_PATH=fixed`（短跑 sanity 可用 `MAX_STEPS=200` 覆盖）。

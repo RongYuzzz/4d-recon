@@ -27,22 +27,26 @@ $PY scripts/adapt_selfcap_release_to_freetime.py \
 test -d data/selfcap_bar_8cam60f/triangulation
 ```
 
-2. Gate-1 600-step SelfCap demo (GPU2)
+2. Protocol v1 (Baseline / Ours-Weak / Control) full runs (GPU2)
+
+说明：
+- 下面 3 条命令的默认参数已对齐 `docs/protocol.yaml`（相机 split/帧段/seed/global_scale/keyframe_step）。
+- 会同时产出 `val_step*.json` + `test_step*.json`，并在 test 上计算 `tLPIPS`（需要 `eval_sample_every_test=1`，默认已启用）。
+
 ```bash
 cd /root/projects/4d-recon
-source /root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/activate
-mkdir -p outputs/gate1_selfcap_demo_600
-python third_party/FreeTimeGsVanilla/src/combine_frames_fast_keyframes.py \
-  --input-dir data/selfcap_bar_8cam60f/triangulation \
-  --output-path outputs/gate1_selfcap_demo_600/keyframes_60frames_step5.npz \
-  --frame-start 0 --frame-end 59 --keyframe-step 5
-CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
-  --data-dir data/selfcap_bar_8cam60f \
-  --init-npz-path outputs/gate1_selfcap_demo_600/keyframes_60frames_step5.npz \
-  --result-dir outputs/gate1_selfcap_demo_600 \
-  --start-frame 0 --end-frame 60 \
-  --max-steps 600 --eval-steps 600 --save-steps 600 \
-  --render-traj-path fixed --global-scale 6
+
+# Baseline (FreeTimeGsVanilla)
+GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600 \
+bash scripts/run_train_baseline_selfcap.sh
+
+# Ours-Weak (cue mining + mask-weighted photometric loss)
+GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600 \
+bash scripts/run_train_ours_weak_selfcap.sh
+
+# Control: same weak path, but constant mask (no cue)
+GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600 \
+bash scripts/run_train_control_weak_nocue_selfcap.sh
 ```
 
 3. T0 audit (baseline vs zero-velocity, GPU2)
@@ -86,11 +90,12 @@ $PY scripts/pack_evidence.py --repo_root . --out_tar outputs/report_pack_$(date 
 ```
 
 ## Playback files
-- `outputs/gate1_selfcap_demo_600/videos/traj_4d_step599.mp4`
+- `outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600/videos/traj_4d_step599.mp4`
+- `outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600/videos/traj_4d_step599.mp4`
+- `outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600/videos/traj_4d_step599.mp4`
 - `outputs/t0_selfcap/baseline/videos/traj_4d_step199.mp4`
 - `outputs/t0_selfcap/zero_velocity/videos/traj_4d_step199.mp4`
 
 ## Fallback
 - If Gaussians become 0: increase `--global-scale` and re-check `triangulation` density.
 - If singular matrix: force `--render-traj-path fixed` and avoid `arc`.
-

@@ -17,10 +17,19 @@ START_FRAME="${START_FRAME:-0}"
 END_FRAME="${END_FRAME:-60}"
 KEYFRAME_STEP="${KEYFRAME_STEP:-5}"
 GPU="${GPU:-0}"
-MAX_STEPS="${MAX_STEPS:-200}"
+MAX_STEPS="${MAX_STEPS:-600}"
 CONFIG="${CONFIG:-default_keyframe_small}"
 GLOBAL_SCALE="${GLOBAL_SCALE:-6}"
 RENDER_TRAJ_PATH="${RENDER_TRAJ_PATH:-fixed}"
+SEED="${SEED:-42}"
+
+# Frozen protocol defaults (camera split).
+TRAIN_CAMERA_NAMES="${TRAIN_CAMERA_NAMES:-02,03,04,05,06,07}"
+VAL_CAMERA_NAMES="${VAL_CAMERA_NAMES:-08}"
+TEST_CAMERA_NAMES="${TEST_CAMERA_NAMES:-09}"
+EVAL_ON_TEST="${EVAL_ON_TEST:-1}"
+EVAL_SAMPLE_EVERY="${EVAL_SAMPLE_EVERY:-1}"
+EVAL_SAMPLE_EVERY_TEST="${EVAL_SAMPLE_EVERY_TEST:-1}"
 
 TOTAL_FRAMES=$((END_FRAME - START_FRAME))
 if [ "$TOTAL_FRAMES" -le 1 ]; then
@@ -70,7 +79,14 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --max-steps "$MAX_STEPS" \
   --eval-steps "$MAX_STEPS" \
   --save-steps "$MAX_STEPS" \
+  --seed "$SEED" \
+  --train-camera-names "$TRAIN_CAMERA_NAMES" \
+  --val-camera-names "$VAL_CAMERA_NAMES" \
+  --test-camera-names "$TEST_CAMERA_NAMES" \
+  --eval-sample-every "$EVAL_SAMPLE_EVERY" \
+  --eval-sample-every-test "$EVAL_SAMPLE_EVERY_TEST" \
   --render-traj-path "$RENDER_TRAJ_PATH" \
-  --global-scale "$GLOBAL_SCALE"
+  --global-scale "$GLOBAL_SCALE" \
+  $(if [ "$EVAL_ON_TEST" = "1" ]; then echo --eval-on-test; fi)
 
 echo "[Baseline] Done: $RESULT_DIR"

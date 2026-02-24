@@ -532,15 +532,17 @@ class FreeTimeDataset:
         patch_size: Optional[int] = None,
         load_depths: bool = False,
         test_set: List[int] = None,
+        val_set: List[int] = None,
         remove_set: List[int] = None,
     ):
         """
         Args:
             parser: FreeTimeParser instance
-            split: "train" or "test"
+            split: "train" / "val" / "test" (legacy: any non-"train" treated as test)
             patch_size: If set, random crop to this size
             load_depths: Whether to load depth data
-            test_set: List of camera indices for testing
+            test_set: List of camera indices for testing (and legacy validation)
+            val_set: List of camera indices for validation (optional; if None, falls back to test_set)
             remove_set: List of camera indices to exclude
         """
         self.parser = parser
@@ -551,16 +553,25 @@ class FreeTimeDataset:
         self.start_frame = parser.start_frame
 
         if test_set is None:
-            test_set = [0]  # Default: first camera for testing
+            test_set = [0]  # Default: first camera for testing (legacy)
+        if val_set is None:
+            val_set = []
 
         num_cameras = len(parser.camera_names)
 
         # Build camera indices for this split
-        if split == "train":
-            self.camera_indices = [i for i in range(num_cameras)
-                                   if i not in test_set and
-                                   (remove_set is None or i not in remove_set)]
-        else:
+        split_l = str(split).lower()
+        if split_l == "train":
+            held_out = set(test_set) | set(val_set)
+            self.camera_indices = [
+                i
+                for i in range(num_cameras)
+                if i not in held_out and (remove_set is None or i not in remove_set)
+            ]
+        elif split_l == "val":
+            use = val_set if val_set else test_set
+            self.camera_indices = [i for i in use if i < num_cameras]
+        else:  # "test" (or legacy fallback)
             self.camera_indices = [i for i in test_set if i < num_cameras]
 
         # Build all (camera, frame) pairs

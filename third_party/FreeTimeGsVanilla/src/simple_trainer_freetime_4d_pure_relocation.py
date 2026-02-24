@@ -141,6 +141,7 @@ Visualization:
 import json
 import math
 import os
+import random
 import time
 import shutil
 from dataclasses import dataclass, field
@@ -268,8 +269,20 @@ class Config:
     data_factor: int = 1
     """Downsample factor for images. 1 = full resolution, 2 = half, etc."""
 
+    seed: int = 42
+    """Random seed for python/numpy/torch and dataloader shuffling."""
+
     test_every: int = 8
     """Use every N-th camera for validation (others used for training)."""
+
+    train_camera_names: str = ""
+    """Optional explicit train camera names (comma-separated). Empty means auto."""
+
+    val_camera_names: str = ""
+    """Optional explicit val camera names (comma-separated). Empty means legacy val=test_set."""
+
+    test_camera_names: str = ""
+    """Optional explicit test camera names (comma-separated). Empty means legacy test_set."""
 
     # ==================== Frame Range ====================
     start_frame: int = 0
@@ -354,6 +367,12 @@ class Config:
     eval_sample_every: int = 60
     """Evaluate every N-th frame for faster validation (e.g., 300/60 = 5 frames)."""
 
+    eval_sample_every_test: int = 1
+    """Evaluate every N-th frame for test split. Use 1 to compute per-frame mean and tLPIPS."""
+
+    eval_on_test: bool = False
+    """If True, also evaluate on the explicit test split and write stats/test_step*.json."""
+
     # ==================== Model ====================
     sh_degree: int = 3
     """Maximum spherical harmonics degree for view-dependent color."""
@@ -405,7 +424,10 @@ class Config:
     """Optional path to cue mining NPZ (pseudo_masks.npz). Empty means disabled."""
 
     pseudo_mask_weight: float = 0.0
-    """Weak fusion weight for mask-weighted L1. 0.0 means disabled (baseline behavior)."""
+    """Weak fusion weight alpha for mask-weighted L1.
+    Interprets pseudo mask as dynamicness in [0,1] and applies:
+        w = 1 - alpha * mask
+    with weighted mean normalization. 0.0 means disabled (baseline behavior)."""
 
     pseudo_mask_end_step: int = 0
     """Apply weak fusion only for step < pseudo_mask_end_step. 0 means disabled."""
@@ -1555,7 +1577,11 @@ class FreeTime4DRunner:
     """FreeTimeGS 4D Gaussian Splatting Trainer."""
 
     def __init__(self, local_rank: int, world_rank: int, world_size: int, cfg: Config):
-        set_random_seed(42 + local_rank)
+        # Best-effort determinism for reproducible experiments.
+        seed = int(cfg.seed) + int(local_rank)
+        set_random_seed(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
 
         self.cfg = cfg
         self.world_rank = world_rank
@@ -1584,16 +1610,65 @@ class FreeTime4DRunner:
             start_frame=cfg.start_frame,
             end_frame=cfg.end_frame,
         )
-        # Create test_set: every N-th camera for validation
         num_cameras = len(self.parser.camera_names)
-        test_set = list(range(0, num_cameras, cfg.test_every))
-        print(f"[FreeTime4D] Using {len(test_set)} cameras for validation (every {cfg.test_every}-th of {num_cameras})")
 
-        self.trainset = FreeTimeDataset(self.parser, split="train", test_set=test_set)
-        self.valset = FreeTimeDataset(self.parser, split="val", test_set=test_set)
+        def _parse_names(s: str) -> list[str]:
+            return [x.strip() for x in str(s).split(",") if x.strip()]
+
+        explicit = bool(cfg.train_camera_names or cfg.val_camera_names or cfg.test_camera_names)
+        if explicit:
+            name_to_idx = {name: i for i, name in enumerate(self.parser.camera_names)}
+
+            def _map(names: list[str], label: str) -> list[int]:
+                missing = [n for n in names if n not in name_to_idx]
+                if missing:
+                    raise ValueError(
+                        f"Unknown camera names in {label}: {missing} (available: {self.parser.camera_names})"
+                    )
+                return [int(name_to_idx[n]) for n in names]
+
+            train_names = _parse_names(cfg.train_camera_names)
+            val_names = _parse_names(cfg.val_camera_names)
+            test_names = _parse_names(cfg.test_camera_names)
+            if not val_names or not test_names:
+                raise ValueError(
+                    "Explicit camera split requires --val-camera-names and --test-camera-names (comma-separated)."
+                )
+
+            val_set = _map(val_names, "val_camera_names")
+            test_set = _map(test_names, "test_camera_names")
+            holdout = set(val_set) | set(test_set)
+
+            remove_set: Optional[List[int]] = None
+            if train_names:
+                train_set = _map(train_names, "train_camera_names")
+                if holdout & set(train_set):
+                    raise ValueError("train/val/test camera sets must be disjoint")
+                remove_set = [i for i in range(num_cameras) if i not in set(train_set)]
+
+            print(
+                "[FreeTime4D] Explicit camera split: "
+                f"train={train_names or '[auto]'} val={val_names} test={test_names}"
+            )
+            self.trainset = FreeTimeDataset(
+                self.parser, split="train", test_set=test_set, val_set=val_set, remove_set=remove_set
+            )
+            self.valset = FreeTimeDataset(self.parser, split="val", test_set=test_set, val_set=val_set)
+            self.testset = FreeTimeDataset(self.parser, split="test", test_set=test_set, val_set=val_set)
+        else:
+            # Legacy split: every N-th camera for "validation" (held-out cams).
+            test_set = list(range(0, num_cameras, cfg.test_every))
+            print(
+                f"[FreeTime4D] Using {len(test_set)} cameras for validation "
+                f"(every {cfg.test_every}-th of {num_cameras})"
+            )
+            self.trainset = FreeTimeDataset(self.parser, split="train", test_set=test_set)
+            self.valset = FreeTimeDataset(self.parser, split="val", test_set=test_set)
+            self.testset = self.valset
+
         self.scene_scale = self.parser.scene_scale * 1.1 * cfg.global_scale
         print(f"[FreeTime4D] Scene scale: {self.scene_scale}")
-        print(f"[FreeTime4D] Train: {len(self.trainset)}, Val: {len(self.valset)}")
+        print(f"[FreeTime4D] Train: {len(self.trainset)}, Val: {len(self.valset)}, Test: {len(self.testset)}")
 
         # Load init NPZ and initialize Gaussians
         if cfg.init_npz_path is None or not os.path.exists(cfg.init_npz_path):
@@ -1787,7 +1862,17 @@ class FreeTime4DRunner:
                 )
             cam_map = [name_to_idx[name] for name in parser_camera_names]
 
-            self.pseudo_masks = torch.from_numpy((masks > 0).astype(np.uint8, copy=False)).cpu()
+            # Keep soft weights:
+            # - uint8: interpret as [0,255] and normalize to [0,1]
+            # - float: expect already in [0,1]
+            if masks.dtype == np.uint8:
+                masks_f = masks.astype(np.float32) / 255.0
+            elif masks.dtype in (np.float32, np.float64):
+                masks_f = np.clip(masks.astype(np.float32), 0.0, 1.0)
+            else:
+                raise ValueError(f"Unsupported masks dtype: {masks.dtype}")
+
+            self.pseudo_masks = torch.from_numpy(masks_f).cpu()
             self.pseudo_mask_frame_start = frame_start
             self.pseudo_mask_num_frames = num_frames
             self.pseudo_mask_cam_map = torch.tensor(cam_map, dtype=torch.long, device="cpu")
@@ -2066,10 +2151,11 @@ class FreeTime4DRunner:
             )
 
         view_idx = self.pseudo_mask_cam_map[camera_idx_t]  # [B]
-        mask_small = self.pseudo_masks[t, view_idx]  # [B,Hm,Wm]
-        mask = (mask_small > 0).to(device=self.device, dtype=torch.float32).unsqueeze(1)  # [B,1,Hm,Wm]
+        mask_small = self.pseudo_masks[t, view_idx]  # [B,Hm,Wm], float32 on CPU
+        mask = mask_small.to(device=self.device, dtype=torch.float32).clamp(0.0, 1.0).unsqueeze(1)  # [B,1,Hm,Wm]
         if tuple(mask.shape[-2:]) != (height, width):
-            mask = F.interpolate(mask, size=(height, width), mode="nearest")
+            # Soft weights: use bilinear upsampling.
+            mask = F.interpolate(mask, size=(height, width), mode="bilinear", align_corners=False)
         return mask
 
     def load_checkpoint(self, ckpt_path: str):
@@ -2647,10 +2733,23 @@ class FreeTime4DRunner:
         ]
 
         # Data loader (with skip_none_collate to handle missing frames)
+        base_seed = int(cfg.seed) + int(self.local_rank)
+
+        def _seed_worker(worker_id: int) -> None:
+            s = base_seed + int(worker_id)
+            random.seed(s)
+            np.random.seed(s)
+            torch.manual_seed(s)
+
+        g = torch.Generator()
+        g.manual_seed(base_seed)
+
         trainloader = torch.utils.data.DataLoader(
             self.trainset, batch_size=cfg.batch_size, shuffle=True,
             num_workers=4, persistent_workers=True, pin_memory=True,
             collate_fn=skip_none_collate,
+            worker_init_fn=_seed_worker,
+            generator=g,
         )
         trainloader_iter = iter(trainloader)
 
@@ -2789,8 +2888,11 @@ class FreeTime4DRunner:
                     width=width,
                 )  # [B,1,H,W]
                 if mask_batch is not None:
-                    # w = 1 + alpha * mask, then normalize by mean(w) to keep loss scale stable.
-                    w = 1.0 + cfg.pseudo_mask_weight * mask_batch.permute(0, 2, 3, 1)  # [B,H,W,1]
+                    # Interpret mask as dynamicness in [0,1], and downweight dynamic pixels:
+                    #   w = 1 - alpha * mask, then normalize by mean(w) to keep loss scale stable.
+                    alpha = float(cfg.pseudo_mask_weight)
+                    alpha = max(0.0, min(1.0, alpha))
+                    w = 1.0 - alpha * mask_batch.permute(0, 2, 3, 1)  # [B,H,W,1]
                     weighted_l1_loss = (torch.abs(colors - pixels) * w).mean() / w.mean().clamp(min=1e-6)
                     l1_loss = weighted_l1_loss
                     pseudo_mask_active_ratio = float(mask_batch.mean().item())
@@ -3118,28 +3220,42 @@ class FreeTime4DRunner:
 
             # Evaluation
             if step in [s - 1 for s in cfg.eval_steps]:
-                self.eval(step)
+                self.eval(step, stage="val")
+                if cfg.eval_on_test:
+                    self.eval(step, stage="test")
 
         print(f"\n[Training] Complete! Total time: {time.time() - global_tic:.1f}s")
 
     @torch.no_grad()
     def eval(self, step: int, stage: str = "val"):
-        """Evaluate on validation set (sampled for speed)."""
+        """Evaluate on val/test set (sampled for speed)."""
         cfg = self.cfg
         device = self.device
 
-        valloader = torch.utils.data.DataLoader(
-            self.valset, batch_size=1, shuffle=False, collate_fn=skip_none_collate
-        )
+        stage_l = str(stage).lower()
+        if stage_l == "test":
+            dataset = self.testset
+            sample_every = int(cfg.eval_sample_every_test) if int(cfg.eval_sample_every_test) > 0 else int(cfg.eval_sample_every)
+        else:
+            dataset = self.valset
+            sample_every = int(cfg.eval_sample_every) if int(cfg.eval_sample_every) > 0 else 1
+
+        valloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=skip_none_collate)
         metrics = defaultdict(list)
         ellipse_time = 0
         eval_count = 0
 
         # Sample every N-th frame for faster evaluation
-        sample_every = cfg.eval_sample_every
-        total_frames = len(valloader)
-        eval_frames = total_frames // sample_every
-        print(f"\n[Eval] Step {step}: evaluating {eval_frames} frames (every {sample_every}-th of {total_frames})")
+        total_samples = len(valloader)
+        eval_frames = total_samples // sample_every
+        print(
+            f"\n[Eval:{stage_l}] Step {step}: evaluating {eval_frames} frames "
+            f"(every {sample_every}-th of {total_samples})"
+        )
+
+        # Temporal stability metric: LPIPS between consecutive predicted frames (same camera).
+        prev_pred_by_cam: dict[int, Tensor] = {}
+        prev_frame_by_cam: dict[int, int] = {}
 
         for i, data in enumerate(valloader):
             # Skip frames for faster evaluation
@@ -3178,17 +3294,31 @@ class FreeTime4DRunner:
                 metrics["psnr"].append(self.psnr(colors_p, pixels_p))
                 metrics["ssim"].append(self.ssim(colors_p, pixels_p))
                 metrics["lpips"].append(self.lpips(colors_p, pixels_p))
+
+                if stage_l == "test" and sample_every == 1:
+                    cam_idx = int(data["camera_idx"].view(-1)[0].item())
+                    frame_idx = int(data["frame_idx"].view(-1)[0].item())
+                    prev = prev_pred_by_cam.get(cam_idx)
+                    prev_frame = prev_frame_by_cam.get(cam_idx)
+                    if prev is not None and prev_frame is not None and frame_idx == prev_frame + 1:
+                        metrics["tlpips"].append(self.lpips(colors_p, prev))
+                    prev_pred_by_cam[cam_idx] = colors_p
+                    prev_frame_by_cam[cam_idx] = frame_idx
                 eval_count += 1
 
         if self.world_rank == 0 and eval_count > 0:
             ellipse_time /= eval_count
-            stats = {k: torch.stack(v).mean().item() for k, v in metrics.items()}
+            stats = {k: torch.stack(v).mean().item() for k, v in metrics.items() if len(v) > 0}
             stats.update({
                 "ellipse_time": ellipse_time,
                 "num_GS": len(self.splats["means"]),
             })
             print(
-                f"PSNR: {stats['psnr']:.3f}, SSIM: {stats['ssim']:.4f}, LPIPS: {stats['lpips']:.3f} "
+                f"PSNR: {stats.get('psnr', float('nan')):.3f}, "
+                f"SSIM: {stats.get('ssim', float('nan')):.4f}, "
+                f"LPIPS: {stats.get('lpips', float('nan')):.3f} "
+                + (f", tLPIPS: {stats['tlpips']:.3f}" if "tlpips" in stats else "")
+                + " "
                 f"Time: {ellipse_time:.3f}s/img, N: {stats['num_GS']}"
             )
             with open(f"{self.stats_dir}/{stage}_step{step:04d}.json", "w") as f:

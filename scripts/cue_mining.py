@@ -51,19 +51,30 @@ def _to_gray(image_rgb: np.ndarray) -> np.ndarray:
 
 
 def _downsample_mask(mask: np.ndarray, downscale: int) -> np.ndarray:
+    """Downsample a soft mask/weight map to uint8 [0,255]."""
     if downscale <= 1:
-        return mask.astype(np.uint8, copy=False)
+        if mask.dtype == np.uint8:
+            return mask
+        return np.clip(mask * 255.0, 0.0, 255.0).astype(np.uint8)
     h, w = mask.shape
     target_w = max(1, w // downscale)
     target_h = max(1, h // downscale)
-    m_img = Image.fromarray((mask > 0).astype(np.uint8) * 255, mode="L")
-    m_small = m_img.resize((target_w, target_h), resample=Image.Resampling.NEAREST)
-    return (np.asarray(m_small, dtype=np.uint8) > 0).astype(np.uint8)
+    if mask.dtype == np.uint8:
+        m_img = Image.fromarray(mask, mode="L")
+    else:
+        m_img = Image.fromarray(np.clip(mask * 255.0, 0.0, 255.0).astype(np.uint8), mode="L")
+    # Use bilinear to preserve soft weights (acts like local averaging).
+    m_small = m_img.resize((target_w, target_h), resample=Image.Resampling.BILINEAR)
+    return np.asarray(m_small, dtype=np.uint8)
 
 
 def _build_overlay(image_rgb: np.ndarray, mask_hw: np.ndarray) -> np.ndarray:
     overlay = image_rgb.astype(np.float32).copy()
-    mask = mask_hw.astype(np.float32)[..., None]
+    # mask in [0,1], used as tint strength.
+    if mask_hw.dtype == np.uint8:
+        mask = (mask_hw.astype(np.float32) / 255.0)[..., None]
+    else:
+        mask = np.clip(mask_hw.astype(np.float32), 0.0, 1.0)[..., None]
     tint = np.array([255.0, 40.0, 40.0], dtype=np.float32)[None, None, :]
     alpha = 0.45
     overlay = overlay * (1.0 - alpha * mask) + tint * (alpha * mask)
@@ -72,9 +83,11 @@ def _build_overlay(image_rgb: np.ndarray, mask_hw: np.ndarray) -> np.ndarray:
 
 def _upsample_mask(mask_small: np.ndarray, out_hw: tuple[int, int]) -> np.ndarray:
     h, w = out_hw
-    m_img = Image.fromarray((mask_small > 0).astype(np.uint8) * 255, mode="L")
-    m_big = m_img.resize((w, h), resample=Image.Resampling.NEAREST)
-    return (np.asarray(m_big, dtype=np.uint8) > 0).astype(np.uint8)
+    if mask_small.dtype != np.uint8:
+        mask_small = np.clip(mask_small * 255.0, 0.0, 255.0).astype(np.uint8)
+    m_img = Image.fromarray(mask_small, mode="L")
+    m_big = m_img.resize((w, h), resample=Image.Resampling.BILINEAR)
+    return np.asarray(m_big, dtype=np.uint8)
 
 
 def _save_grid(images: list[np.ndarray], out_path: Path, max_cols: int = 4) -> None:
@@ -135,8 +148,13 @@ def _run_diff_backend(
                 _fail(f"inconsistent frame shape in camera '{cam_name}'")
             diff = np.abs(_to_gray(curr) - _to_gray(prev))
             thr = float(np.quantile(diff, threshold_quantile))
-            mask = (diff > thr).astype(np.uint8)
-            cam_masks.append(_downsample_mask(mask, mask_downscale))
+            diff_max = float(diff.max())
+            if diff_max <= thr + 1e-6:
+                dyn = np.zeros_like(diff, dtype=np.float32)
+            else:
+                # Soft dynamicness in [0,1]: 0 below threshold, 1 at max diff.
+                dyn = np.clip((diff - thr) / (diff_max - thr + 1e-6), 0.0, 1.0).astype(np.float32)
+            cam_masks.append(_downsample_mask(dyn, mask_downscale))
         small_masks.append(cam_masks)
 
     # Convert camera-major list into [T,V,Hm,Wm].
@@ -166,8 +184,9 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--frame_start", type=int, default=0)
     ap.add_argument("--num_frames", type=int, default=60)
     ap.add_argument("--mask_downscale", type=int, default=4)
-    ap.add_argument("--backend", choices=["diff", "vggt"], default="diff")
+    ap.add_argument("--backend", choices=["diff", "vggt", "zeros"], default="diff")
     ap.add_argument("--threshold_quantile", type=float, default=0.9)
+    ap.add_argument("--temporal_smoothing", choices=["none", "median3"], default="median3")
     ap.add_argument("--overwrite", action="store_true")
     return ap.parse_args()
 
@@ -188,15 +207,45 @@ def main() -> None:
     if args.backend == "vggt":
         _run_vggt_backend()
         return
+    if args.backend == "zeros":
+        if args.num_frames <= 0:
+            _fail(f"num_frames must be > 0, got {args.num_frames}")
+        if args.mask_downscale <= 0:
+            _fail(f"mask_downscale must be >= 1, got {args.mask_downscale}")
+        # Constant-zero dynamicness mask (no cue). Still satisfies contract and enables control runs.
+        # Shape: [T,V,Hm,Wm]
+        first_cam = camera_names[0]
+        first_map = _index_camera_frames(images_dir / first_cam)
+        if args.frame_start not in first_map:
+            _fail(f"camera '{first_cam}' missing frame {args.frame_start} for backend=zeros")
+        example = _read_rgb(first_map[args.frame_start])
+        h, w = example.shape[:2]
+        hm, wm = max(1, h // args.mask_downscale), max(1, w // args.mask_downscale)
+        masks = np.zeros((args.num_frames, len(camera_names), hm, wm), dtype=np.uint8)
+        frame_cache = {
+            name: [_read_rgb(_index_camera_frames(images_dir / name)[args.frame_start])]
+            for name in camera_names
+        }
+    else:
+        masks, frame_cache = _run_diff_backend(
+            images_dir=images_dir,
+            camera_names=camera_names,
+            frame_start=args.frame_start,
+            num_frames=args.num_frames,
+            mask_downscale=args.mask_downscale,
+            threshold_quantile=args.threshold_quantile,
+        )
 
-    masks, frame_cache = _run_diff_backend(
-        images_dir=images_dir,
-        camera_names=camera_names,
-        frame_start=args.frame_start,
-        num_frames=args.num_frames,
-        mask_downscale=args.mask_downscale,
-        threshold_quantile=args.threshold_quantile,
-    )
+    if args.temporal_smoothing == "median3" and masks.shape[0] >= 3:
+        t, v, hm, wm = masks.shape
+        smoothed = np.empty_like(masks)
+        for ti in range(t):
+            i0 = max(0, ti - 1)
+            i1 = ti
+            i2 = min(t - 1, ti + 1)
+            window = np.stack([masks[i0], masks[i1], masks[i2]], axis=0)  # [3,V,Hm,Wm]
+            smoothed[ti] = np.median(window, axis=0).astype(np.uint8)
+        masks = smoothed
 
     npz_path = out_dir / "pseudo_masks.npz"
     np.savez_compressed(
@@ -225,6 +274,7 @@ def main() -> None:
     _save_grid(grid_imgs, viz_dir / "grid_frame000000.jpg", max_cols=4)
 
     print(f"[CueMining] backend: {args.backend}")
+    print(f"[CueMining] temporal_smoothing: {args.temporal_smoothing}")
     print(f"[CueMining] data_dir: {data_dir}")
     print(f"[CueMining] out_dir: {out_dir}")
     print(f"[CueMining] cameras: {len(camera_names)} ({camera_names})")
@@ -232,7 +282,10 @@ def main() -> None:
         f"[CueMining] frames: [{args.frame_start}, {args.frame_start + args.num_frames}) "
         f"num_frames={args.num_frames}"
     )
-    print(f"[CueMining] masks shape: {tuple(masks.shape)} dtype={masks.dtype}")
+    print(
+        f"[CueMining] masks shape: {tuple(masks.shape)} dtype={masks.dtype} "
+        f"range=[{int(masks.min())},{int(masks.max())}]"
+    )
     print(f"[CueMining] npz: {npz_path}")
     print(f"[CueMining] viz: {viz_dir}")
 

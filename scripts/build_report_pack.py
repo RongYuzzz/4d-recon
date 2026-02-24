@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build report-pack metrics CSV from validation stats JSON files."""
+"""Build report-pack metrics CSV from stats JSON files."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-STEP_PATTERN = re.compile(r"^val_step(\d+)\.json$")
+STATS_PATTERN = re.compile(r"^(val|test)_step(\d+)\.json$")
 
 
 def _pick(data: dict[str, Any], *keys: str) -> Any:
@@ -69,22 +69,24 @@ def main() -> int:
     out_dir = _resolve_path(args.out_dir)
     output_csv = out_dir / "metrics.csv"
 
-    stats_files = outputs_root.glob("**/stats/val_step*.json")
-    latest_by_run: dict[Path, tuple[int, Path]] = {}
+    stats_files = outputs_root.glob("**/stats/*_step*.json")
+    latest_by_run: dict[tuple[Path, str], tuple[int, Path]] = {}
 
     for stats_file in stats_files:
-        match = STEP_PATTERN.match(stats_file.name)
+        match = STATS_PATTERN.match(stats_file.name)
         if not match:
             continue
-        step = int(match.group(1))
+        stage = match.group(1)
+        step = int(match.group(2))
         run_dir = stats_file.parent.parent
-        best = latest_by_run.get(run_dir)
+        key = (run_dir, stage)
+        best = latest_by_run.get(key)
         if best is None or step > best[0]:
-            latest_by_run[run_dir] = (step, stats_file)
+            latest_by_run[key] = (step, stats_file)
 
     rows: list[dict[str, Any]] = []
-    for run_dir in sorted(latest_by_run):
-        step, stats_path = latest_by_run[run_dir]
+    for (run_dir, stage) in sorted(latest_by_run):
+        step, stats_path = latest_by_run[(run_dir, stage)]
         try:
             data = json.loads(stats_path.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
@@ -101,10 +103,12 @@ def main() -> int:
                 "run_dir": run_dir_display,
                 "gate": gate,
                 "dataset": dataset,
+                "stage": stage,
                 "step": step,
                 "psnr": _pick(data, "psnr", "PSNR"),
                 "ssim": _pick(data, "ssim", "SSIM"),
                 "lpips": _pick(data, "lpips", "LPIPS"),
+                "tlpips": _pick(data, "tlpips", "tLPIPS"),
                 "num_gs": _pick(data, "num_gs", "num_GS", "numGs"),
                 "notes": "",
             }
@@ -118,10 +122,12 @@ def main() -> int:
                 "run_dir",
                 "gate",
                 "dataset",
+                "stage",
                 "step",
                 "psnr",
                 "ssim",
                 "lpips",
+                "tlpips",
                 "num_gs",
                 "notes",
             ],

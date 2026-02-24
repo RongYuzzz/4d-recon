@@ -15,6 +15,7 @@ from typing import Iterable
 
 STEP_PATTERN = re.compile(r"step(\d+)")
 VAL_PATTERN = re.compile(r"^val_step(\d+)\.json$")
+TEST_PATTERN = re.compile(r"^test_step(\d+)\.json$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,6 +64,19 @@ def collect_files(repo_root: Path) -> list[Path]:
     if readme.exists():
         files.add(readme)
 
+    docs_dir = repo_root / "docs"
+    if docs_dir.exists():
+        # Protocol + execution plan are part of the evidence chain.
+        for p in [
+            docs_dir / "README.md",
+            docs_dir / "protocol.yaml",
+        ]:
+            if p.exists():
+                files.add(p)
+        files.update(p for p in (docs_dir / "protocols").glob("*.yaml") if p.is_file())
+        files.update(p for p in (docs_dir / "execution").glob("*.md") if p.is_file())
+        files.update(p for p in (docs_dir / "report_pack").rglob("*") if p.is_file())
+
     notes_dir = repo_root / "notes"
     if notes_dir.exists():
         files.update(p for p in notes_dir.glob("*.md") if p.is_file())
@@ -71,12 +85,19 @@ def collect_files(repo_root: Path) -> list[Path]:
     if not outputs.exists():
         return sorted(files)
 
-    stats_latest = _latest_per_run(
+    stats_latest_val = _latest_per_run(
         outputs.glob("**/stats/val_step*.json"),
         run_from_file=lambda p: p.parent.parent,
         step_from_file=lambda p: _step_from_name(p.name, VAL_PATTERN),
     )
-    files.update(p for p in stats_latest if p.is_file())
+    files.update(p for p in stats_latest_val if p.is_file())
+
+    stats_latest_test = _latest_per_run(
+        outputs.glob("**/stats/test_step*.json"),
+        run_from_file=lambda p: p.parent.parent,
+        step_from_file=lambda p: _step_from_name(p.name, TEST_PATTERN),
+    )
+    files.update(p for p in stats_latest_test if p.is_file())
 
     video_latest = _latest_per_run(
         outputs.glob("**/videos/traj_*.mp4"),

@@ -5,17 +5,19 @@
 1. `README.md`
    - 主入口命令、Gate-0/Gate-1 说明、SelfCap canonical adapter。
    - 总执行计划：`docs/execution/2026-02-12-4d-reconstruction-execution.md`
-2. `notes/demo-runbook.md`
+2. `docs/protocol.yaml`
+   - 唯一评测/训练协议真源（冻结，改动必须版本升级）。
+3. `notes/demo-runbook.md`
    - 现场演示命令（尽量只依赖主阵地 `/root/projects/4d-recon`）。
-3. `notes/data-manifest.md`
+4. `notes/data-manifest.md`
    - 当前数据路径与历史产物清单（含可选清理项）。
-4. `notes/decision-log.md`
+5. `notes/decision-log.md`
    - 关键决策与验证记录（为什么这样做、什么时候定版）。
-5. `notes/t0-gate-decision.md` + `scripts/t0_grad_check.md`
+6. `notes/t0-gate-decision.md` + `scripts/t0_grad_check.md`
    - T0 审计结论与梯度检查口径。
-6. `docs/report_pack/`
+7. `docs/report_pack/`
    - 汇报材料快照（文本版，便于长期保存）。
-7. `artifacts/report_packs/`（本地）
+8. `artifacts/report_packs/`（本地）
    - 离线证据包 tarball（不进 git，建议另行备份）。
 
 `docs/plans/` 下是执行计划/分工记录：大多数已标注“存档”，用于追溯过程；`Next` 类计划则用于后续推进。

@@ -4,6 +4,14 @@ This workspace tracks the execution of `docs/execution/2026-02-12-4d-reconstruct
 
 Day-to-day runnable commands live in `README.md` + `notes/demo-runbook.md`.
 
+## Protocol (Single Source of Truth)
+
+Frozen training/eval protocol: `docs/protocol.yaml`.
+
+Rule:
+- Do not silently change frame ranges/camera splits/hyperparams between runs.
+- If protocol must change, create a new `docs/protocols/protocol_v2.yaml` and update `docs/protocol.yaml`.
+
 ## Structure
 - `third_party/`: external repositories
 - `data/`: datasets or symlinks
