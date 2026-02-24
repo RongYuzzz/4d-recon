@@ -140,7 +140,8 @@ if [[ "$RUN_SELFCAP_ADAPTER" -eq 1 ]]; then
     if [[ -n "$ADAPTER_CMD" ]]; then
       run_cmd "$ADAPTER_CMD"
     else
-      run_cmd "source '$VENV_ACTIVATE' && python '$ADAPTER_SCRIPT' --tar_gz '$SELFCAP_TAR' --output_dir '$SELFCAP_OUT_DIR' --camera_ids 02,03,04,05,06,07,08,09 --frame_start 0 --num_frames 60 --image_downscale 2 --seed 0"
+      # Idempotent repro: if output_dir already exists (possibly partially), allow adapter to clean known subdirs.
+      run_cmd "source '$VENV_ACTIVATE' && python '$ADAPTER_SCRIPT' --tar_gz '$SELFCAP_TAR' --output_dir '$SELFCAP_OUT_DIR' --camera_ids 02,03,04,05,06,07,08,09 --frame_start 0 --num_frames 60 --image_downscale 2 --seed 0 --overwrite"
     fi
   else
     echo "[warn] Skip SelfCap adapter: missing script/tar/venv"

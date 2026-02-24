@@ -69,6 +69,10 @@ $PY scripts/adapt_selfcap_release_to_freetime.py \
 
 该 canonical 路线直接读取 `bar-release.tar.gz`，不依赖系统 `ffmpeg`/`ffprobe`。
 
+Tips:
+- 若 `--output_dir` 已存在且非空，重新生成请加 `--overwrite`（会清理已知子目录：`images/`、`sparse/`、`triangulation/`）。
+- 若你只想导出 `triangulation + sparse/0`（跳过视频解码），可用 `--no_images --image_width ... --image_height ...`。
+
 ### Legacy / Alternative
 
 历史流程 `prepare_selfcap_for_freetime.py`（若你本地仍保留该脚本）属于非主入口。
