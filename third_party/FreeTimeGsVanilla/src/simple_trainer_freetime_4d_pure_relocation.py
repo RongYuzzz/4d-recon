@@ -145,7 +145,7 @@ import time
 import shutil
 from dataclasses import dataclass, field
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import imageio
 import numpy as np
@@ -409,6 +409,19 @@ class Config:
 
     pseudo_mask_end_step: int = 0
     """Apply weak fusion only for step < pseudo_mask_end_step. 0 means disabled."""
+
+    # ==================== Strong Fusion (Temporal Correspondences) ====================
+    temporal_corr_npz: str = ""
+    """Optional path to temporal correspondence NPZ (temporal_corr.npz). Empty means disabled."""
+
+    lambda_corr: float = 0.0
+    """Weight for temporal correspondence photometric loss. 0.0 means disabled (baseline behavior)."""
+
+    temporal_corr_end_step: int = 0
+    """Apply temporal correspondence loss only for step < temporal_corr_end_step. 0 means disabled."""
+
+    temporal_corr_max_pairs: int = 0
+    """Max correspondences used per sample per step. 0 means use all for that (cam, frame) pair."""
 
     # ==================== Training Phases (Annealing Strategy) ====================
     # NOTE: Per FreeTimeGS paper, we do NOT use warmup/canonical phases that freeze velocity.
@@ -1709,6 +1722,16 @@ class FreeTime4DRunner:
         self.pseudo_mask_downscale: int = 1
         self._maybe_load_pseudo_masks()
 
+        # Optional strong fusion temporal correspondences (default fully disabled)
+        self.temporal_corr_groups: Optional[Dict[Tuple[int, int], np.ndarray]] = None
+        self.temporal_corr_dst_frame_by_key: Dict[Tuple[int, int], int] = {}
+        self.temporal_corr_src_xy: Optional[np.ndarray] = None  # [N,2], float32, in npz pixel coords
+        self.temporal_corr_dst_xy: Optional[np.ndarray] = None  # [N,2], float32, in npz pixel coords
+        self.temporal_corr_weight: Optional[np.ndarray] = None  # [N], float32
+        self.temporal_corr_factor: int = 1  # equals parser.factor when loaded
+        self.temporal_corr_max_pairs: int = 0
+        self._maybe_load_temporal_corr()
+
         # Load checkpoint if provided
         if cfg.ckpt_path is not None:
             self.load_checkpoint(cfg.ckpt_path)
@@ -1777,6 +1800,240 @@ class FreeTime4DRunner:
             f"num_frames={self.pseudo_mask_num_frames}, "
             f"weight={cfg.pseudo_mask_weight}, end_step={cfg.pseudo_mask_end_step}"
         )
+
+    def _maybe_load_temporal_corr(self) -> None:
+        """Load temporal correspondences if strong fusion is enabled by config."""
+        cfg = self.cfg
+        if cfg.lambda_corr <= 0.0 or cfg.temporal_corr_end_step <= 0:
+            return
+        if not cfg.temporal_corr_npz:
+            raise ValueError(
+                "Strong fusion requested (lambda_corr/temporal_corr_end_step) but temporal_corr_npz is empty"
+            )
+        if not os.path.exists(cfg.temporal_corr_npz):
+            raise FileNotFoundError(f"Temporal correspondence NPZ not found: {cfg.temporal_corr_npz}")
+
+        with np.load(cfg.temporal_corr_npz, allow_pickle=True) as npz:
+            required_keys = {
+                "camera_names",
+                "frame_start",
+                "num_frames",
+                "image_width",
+                "image_height",
+                "src_cam_idx",
+                "src_frame_offset",
+                "dst_frame_offset",
+                "src_xy",
+                "dst_xy",
+                "weight",
+            }
+            missing = sorted(required_keys - set(npz.files))
+            if missing:
+                raise ValueError(
+                    f"Temporal corr NPZ missing keys: {', '.join(missing)} ({cfg.temporal_corr_npz})"
+                )
+
+            camera_names = [str(x) for x in npz["camera_names"].tolist()]
+            parser_camera_names = list(self.parser.camera_names)
+            parser_name_to_idx = {name: idx for idx, name in enumerate(parser_camera_names)}
+            missing_cameras = [name for name in parser_camera_names if name not in set(camera_names)]
+            if missing_cameras:
+                raise ValueError(
+                    "Temporal corr camera_names do not cover parser cameras: "
+                    + ", ".join(missing_cameras[:8])
+                )
+
+            frame_start = int(npz["frame_start"])
+            num_frames = int(npz["num_frames"])
+            image_width = int(npz["image_width"])
+            image_height = int(npz["image_height"])
+            if num_frames <= 0:
+                raise ValueError(f"num_frames must be positive, got {num_frames}")
+            if image_width <= 0 or image_height <= 0:
+                raise ValueError(f"invalid image_width/height: {image_width}x{image_height}")
+
+            src_cam_idx = npz["src_cam_idx"].astype(np.int32, copy=False).reshape(-1)
+            src_frame_offset = npz["src_frame_offset"].astype(np.int32, copy=False).reshape(-1)
+            dst_frame_offset = npz["dst_frame_offset"].astype(np.int32, copy=False).reshape(-1)
+            src_xy = npz["src_xy"].astype(np.float32, copy=False)
+            dst_xy = npz["dst_xy"].astype(np.float32, copy=False)
+            weight = npz["weight"].astype(np.float32, copy=False).reshape(-1)
+
+            if src_xy.ndim != 2 or src_xy.shape[1] != 2:
+                raise ValueError(f"src_xy must have shape [N,2], got {src_xy.shape}")
+            if dst_xy.ndim != 2 or dst_xy.shape[1] != 2:
+                raise ValueError(f"dst_xy must have shape [N,2], got {dst_xy.shape}")
+            n = int(src_xy.shape[0])
+            if not (src_cam_idx.shape[0] == src_frame_offset.shape[0] == dst_frame_offset.shape[0] == weight.shape[0] == n):
+                raise ValueError("temporal corr arrays length mismatch")
+
+            npz_to_parser_cam = np.array(
+                [parser_name_to_idx[name] for name in camera_names],
+                dtype=np.int16,
+            )
+            src_cam_idx_parser = npz_to_parser_cam[src_cam_idx]
+            src_frame_idx_abs = frame_start + src_frame_offset
+            dst_frame_idx_abs = frame_start + dst_frame_offset
+
+        # If the parser applies undistortion/cropping, the correspondence coords (from raw images/)
+        # are no longer in the same pixel space. We detect mismatch via expected imsize and disable
+        # strong fusion rather than silently using wrong coordinates.
+        factor = int(getattr(self.parser, "factor", 1))
+        expected_w = int(image_width) // max(factor, 1)
+        expected_h = int(image_height) // max(factor, 1)
+        for cam_idx, camera_id in enumerate(self.parser.camera_ids):
+            imsize = self.parser.imsize_dict.get(camera_id)
+            if imsize is None:
+                continue
+            w_i, h_i = int(imsize[0]), int(imsize[1])
+            if (w_i, h_i) != (expected_w, expected_h):
+                print(
+                    "[StrongFusion][WARN] parser image size differs from corr NPZ. "
+                    f"cam_idx={cam_idx} imsize={w_i}x{h_i}, expected={expected_w}x{expected_h}. "
+                    "Strong fusion disabled. Recompute correspondences in the same pixel space."
+                )
+                return
+
+        groups: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+        dst_by_key: Dict[Tuple[int, int], int] = {}
+        for i in range(src_frame_idx_abs.shape[0]):
+            key = (int(src_cam_idx_parser[i]), int(src_frame_idx_abs[i]))
+            groups[key].append(i)
+            dst_i = int(dst_frame_idx_abs[i])
+            prev = dst_by_key.get(key)
+            if prev is None:
+                dst_by_key[key] = dst_i
+            elif prev != dst_i:
+                raise ValueError(f"Non-unique dst_frame for key={key}: {prev} vs {dst_i}")
+
+        self.temporal_corr_groups = {k: np.asarray(v, dtype=np.int32) for k, v in groups.items()}
+        self.temporal_corr_dst_frame_by_key = dst_by_key
+        self.temporal_corr_src_xy = np.ascontiguousarray(src_xy)
+        self.temporal_corr_dst_xy = np.ascontiguousarray(dst_xy)
+        self.temporal_corr_weight = np.ascontiguousarray(weight)
+        self.temporal_corr_factor = factor
+        self.temporal_corr_max_pairs = int(cfg.temporal_corr_max_pairs)
+
+        print(
+            "[StrongFusion] Loaded temporal correspondences: "
+            f"path={cfg.temporal_corr_npz}, N={int(src_xy.shape[0])}, "
+            f"groups={len(self.temporal_corr_groups)}, "
+            f"lambda_corr={cfg.lambda_corr}, end_step={cfg.temporal_corr_end_step}, "
+            f"factor={self.temporal_corr_factor}"
+        )
+
+    def _load_rgb_image_for_corr(self, cam_idx: int, frame_idx: int) -> np.ndarray:
+        """Load an RGB frame in the same way as the dataset loader (no random crop)."""
+        import cv2  # noqa: PLC0415
+        import imageio.v2 as imageio_v2  # noqa: PLC0415
+
+        camera_path = self.parser.campaths[cam_idx]
+        frame_num = frame_idx + self.parser.frame_start_offset
+        frame_name = f"{frame_num:0{self.parser.frame_digits}d}{self.parser.image_format}"
+        image_path = os.path.join(camera_path, frame_name)
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Missing GT image: {image_path}")
+
+        img = imageio_v2.imread(image_path)[..., :3]
+        factor = int(getattr(self.parser, "factor", 1))
+        if factor > 1:
+            img = cv2.resize(
+                img,
+                dsize=(img.shape[1] // factor, img.shape[0] // factor),
+                interpolation=cv2.INTER_LINEAR,
+            )
+
+        camera_id = self.parser.camera_ids[cam_idx]
+        params = self.parser.params_dict.get(camera_id)
+        if params is not None and len(params) > 0:
+            mapx = self.parser.mapx_dict[camera_id]
+            mapy = self.parser.mapy_dict[camera_id]
+            img = cv2.remap(img, mapx, mapy, cv2.INTER_LINEAR)
+            x, y, w, h = self.parser.roi_undist_dict[camera_id]
+            img = img[y : y + h, x : x + w]
+        return img
+
+    def _compute_temporal_corr_loss(
+        self,
+        colors: Tensor,  # [B,H,W,3] in [0,1]
+        data: Dict[str, Any],
+        height: int,
+        width: int,
+    ) -> Tuple[Tensor, int]:
+        """Compute per-step temporal correspondence loss (nearest neighbor sampling)."""
+        if (
+            self.temporal_corr_groups is None
+            or self.temporal_corr_src_xy is None
+            or self.temporal_corr_dst_xy is None
+            or self.temporal_corr_weight is None
+        ):
+            return torch.tensor(0.0, device=self.device), 0
+
+        cam_idx_t = torch.as_tensor(data["camera_idx"], dtype=torch.long, device="cpu").view(-1)
+        frame_idx_t = torch.as_tensor(data["frame_idx"], dtype=torch.long, device="cpu").view(-1)
+
+        loss_sum = torch.tensor(0.0, device=self.device)
+        weight_sum = torch.tensor(0.0, device=self.device)
+        total_pairs = 0
+
+        factor = max(int(self.temporal_corr_factor), 1)
+        max_pairs = int(self.temporal_corr_max_pairs)
+
+        for b in range(int(cam_idx_t.numel())):
+            cam_idx = int(cam_idx_t[b].item())
+            frame_idx = int(frame_idx_t[b].item())
+            key = (cam_idx, frame_idx)
+            idxs = self.temporal_corr_groups.get(key)
+            if idxs is None or idxs.size == 0:
+                continue
+            dst_frame = self.temporal_corr_dst_frame_by_key.get(key)
+            if dst_frame is None:
+                continue
+
+            if max_pairs > 0 and idxs.size > max_pairs:
+                idxs = idxs[:max_pairs]
+
+            # Load destination GT image once per sample.
+            dst_img = self._load_rgb_image_for_corr(cam_idx, int(dst_frame))
+            if dst_img.shape[0] != height or dst_img.shape[1] != width:
+                # Mismatch likely indicates undistortion/crop space mismatch.
+                continue
+
+            src_xy = self.temporal_corr_src_xy[idxs]
+            dst_xy = self.temporal_corr_dst_xy[idxs]
+            w_np = self.temporal_corr_weight[idxs]
+
+            if factor != 1:
+                src_xy = src_xy / float(factor)
+                dst_xy = dst_xy / float(factor)
+
+            x0 = np.rint(src_xy[:, 0]).astype(np.int64, copy=False)
+            y0 = np.rint(src_xy[:, 1]).astype(np.int64, copy=False)
+            x1 = np.rint(dst_xy[:, 0]).astype(np.int64, copy=False)
+            y1 = np.rint(dst_xy[:, 1]).astype(np.int64, copy=False)
+
+            x0 = np.clip(x0, 0, width - 1)
+            y0 = np.clip(y0, 0, height - 1)
+            x1 = np.clip(x1, 0, width - 1)
+            y1 = np.clip(y1, 0, height - 1)
+
+            # Predicted colors at source coords (grad flows to colors -> splats).
+            lin0 = torch.from_numpy(y0 * width + x0).to(device=self.device, dtype=torch.long)
+            pred = colors[b].contiguous().view(-1, 3).index_select(0, lin0)  # [N,3]
+
+            # GT colors at destination coords (no grad).
+            gt_np = (dst_img[y1, x1].astype(np.float32) / 255.0).reshape(-1, 3)
+            gt = torch.from_numpy(gt_np).to(device=self.device, dtype=torch.float32)
+
+            w = torch.from_numpy(w_np.astype(np.float32, copy=False)).to(device=self.device, dtype=torch.float32)
+            diff = (pred - gt).abs().mean(dim=-1)  # [N]
+            loss_sum = loss_sum + (diff * w).sum()
+            weight_sum = weight_sum + w.sum()
+            total_pairs += int(diff.numel())
+
+        if total_pairs == 0:
+            return torch.tensor(0.0, device=self.device), 0
+        return loss_sum / weight_sum.clamp(min=1e-6), total_pairs
 
     def _get_pseudo_mask_batch(
         self,
@@ -2574,8 +2831,26 @@ class FreeTime4DRunner:
             loss_4d_reg = cfg.lambda_4d_reg * reg_4d_loss
             loss_dur_reg = cfg.lambda_duration_reg * duration_reg_loss
 
+            # 5. Temporal Correspondence Loss (Strong Fusion) - optional, default disabled
+            corr_loss = torch.tensor(0.0, device=device)
+            corr_pairs = 0
+            use_strong_fusion = (
+                self.temporal_corr_groups is not None
+                and cfg.lambda_corr > 0.0
+                and cfg.temporal_corr_end_step > 0
+                and step < cfg.temporal_corr_end_step
+            )
+            if use_strong_fusion:
+                corr_loss, corr_pairs = self._compute_temporal_corr_loss(
+                    colors=colors,
+                    data=data,
+                    height=height,
+                    width=width,
+                )
+            loss_corr = cfg.lambda_corr * corr_loss
+
             # Total loss
-            loss = loss_img + loss_ssim + loss_lpips + loss_4d_reg + loss_dur_reg
+            loss = loss_img + loss_ssim + loss_lpips + loss_4d_reg + loss_dur_reg + loss_corr
 
             # Backward
             loss.backward()
@@ -2696,14 +2971,18 @@ class FreeTime4DRunner:
                 self.writer.add_scalar("loss/ssim_raw", ssim_loss.item(), step)
                 self.writer.add_scalar("loss/lpips_raw", lpips_loss.item(), step)
                 self.writer.add_scalar("loss/4d_reg_raw", reg_4d_loss.item(), step)
+                self.writer.add_scalar("loss/corr_raw", corr_loss.item(), step)
 
                 # --- Weighted Loss Components (what goes into total) ---
                 self.writer.add_scalar("loss_weighted/l1", loss_img.item(), step)
                 self.writer.add_scalar("loss_weighted/ssim", loss_ssim.item(), step)
                 self.writer.add_scalar("loss_weighted/lpips", loss_lpips.item(), step)
                 self.writer.add_scalar("loss_weighted/4d_reg", loss_4d_reg.item(), step)
+                self.writer.add_scalar("loss_weighted/corr", loss_corr.item(), step)
                 if pseudo_mask_active_ratio is not None:
                     self.writer.add_scalar("pseudo_mask/active_ratio", pseudo_mask_active_ratio, step)
+                if corr_pairs > 0:
+                    self.writer.add_scalar("corr/pairs", corr_pairs, step)
 
                 # --- Quality Metrics ---
                 self.writer.add_scalar("metrics/ssim", ssim_val.item(), step)  # Higher is better
