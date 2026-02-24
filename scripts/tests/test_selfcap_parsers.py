@@ -17,6 +17,25 @@ import adapt_selfcap_release_to_freetime as adapter
 
 
 class SelfCapParserTests(unittest.TestCase):
+    def test_ensure_empty_or_overwrite_rejects_non_empty_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td) / "out_dir"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "DO_NOT_TOUCH").write_text("sentinel", encoding="utf-8")
+            with self.assertRaises((RuntimeError, ValueError)):
+                adapter.ensure_empty_or_overwrite(out_dir, overwrite=False)
+
+    def test_ensure_empty_or_overwrite_cleans_known_outputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = Path(td) / "out_dir"
+            (out_dir / "images").mkdir(parents=True, exist_ok=True)
+            (out_dir / "triangulation").mkdir(parents=True, exist_ok=True)
+            (out_dir / "images" / "old.jpg").write_text("old", encoding="utf-8")
+            (out_dir / "triangulation" / "old.npy").write_text("old", encoding="utf-8")
+            adapter.ensure_empty_or_overwrite(out_dir, overwrite=True)
+            self.assertFalse((out_dir / "images" / "old.jpg").exists())
+            self.assertFalse((out_dir / "triangulation" / "old.npy").exists())
+
     def test_parse_opencv_yml_mats(self):
         text = """%YAML:1.0
 K_02: !!opencv-matrix

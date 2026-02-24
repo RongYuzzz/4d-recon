@@ -35,6 +35,28 @@ _PLY_DTYPES = {
 }
 
 
+def ensure_empty_or_overwrite(out_root: Path, overwrite: bool) -> None:
+    if not out_root.exists():
+        return
+    if not out_root.is_dir():
+        raise ValueError(f"Output path exists but is not a directory: {out_root}")
+
+    has_entries = any(out_root.iterdir())
+    if not has_entries:
+        return
+
+    if not overwrite:
+        raise RuntimeError(
+            f"Output directory is not empty: {out_root}. "
+            "Use --overwrite to clean known adapter outputs."
+        )
+
+    for sub in ("images", "sparse", "triangulation"):
+        target = out_root / sub
+        if target.exists():
+            shutil.rmtree(target)
+
+
 def parse_opencv_yml_mats(text: str) -> dict[str, np.ndarray]:
     mats: dict[str, np.ndarray] = {}
     for match in _OPENCV_MATRIX_PATTERN.finditer(text):
@@ -303,6 +325,11 @@ def main() -> None:
     ap.add_argument("--image_downscale", type=int, default=2)
     ap.add_argument("--max_points", type=int, default=200000)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow cleaning existing images/sparse/triangulation under output_dir",
+    )
     args = ap.parse_args()
 
     tar_path = Path(args.tar_gz)
@@ -319,6 +346,8 @@ def main() -> None:
     camera_ids = [c.strip() for c in args.camera_ids.split(",") if c.strip()]
     if not camera_ids:
         raise ValueError("--camera_ids is empty")
+
+    ensure_empty_or_overwrite(out_root, overwrite=args.overwrite)
 
     images_dir = out_root / "images"
     sparse0_dir = out_root / "sparse" / "0"
