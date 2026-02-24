@@ -4,7 +4,7 @@
 
 **Goal:** 把 midterm 需要的“可交付五件套”在主阵地固化为可复现证据与材料：Baseline 稳定长跑、关键 ablation（先基线敏感性，后接 weak/strong）、失败案例整理、以及一键离线证据包（含 hash manifest）。
 
-**Scope 对齐：**本计划对应 `~/2026-02-12-4d-reconstruction-execution.md` 的 Task 11（证据打包）与 midterm 汇报准备。不会实现 cue mining / weak/strong 融合算法本体（由 A/B 负责）。
+**Scope 对齐：**本计划对应 `docs/execution/2026-02-12-4d-reconstruction-execution.md` 的 Task 11（证据打包）与 midterm 汇报准备。不会实现 cue mining / weak/strong 融合算法本体（由 A/B 负责）。
 
 **Parallel Safety:** 不修改 `third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py`，避免与 A 的 weak-fusion 改动冲突；主要改动集中在 `scripts/` 与 `notes/`。
 
@@ -142,4 +142,3 @@ Expected:
 - baseline vs ours-weak vs ours-strong 的三条视频（同场景同 seed 同步）
 - `metrics.csv`/`table_metrics.md` 更新为三行对比
 - `ablation_notes.md` 补齐结论（弱融合有效性、强融合是否改善 flicker/一致性）
-
