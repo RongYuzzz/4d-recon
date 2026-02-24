@@ -8,22 +8,22 @@
 ## Run command (current audit)
 ```bash
 cd /root/projects/4d-recon/.worktrees/owner-c-20260224
-source third_party/FreeTimeGsVanilla/.venv/bin/activate
+source /root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/activate
 CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
-  --data-dir data/gate1_fixture_adapted_v2 \
-  --init-npz-path outputs/t0_selfcap/keyframes_12frames_step5.npz \
+  --data-dir /root/projects/4d-recon/data/selfcap_bar_8cam60f \
+  --init-npz-path outputs/t0_selfcap/keyframes_60frames_step5.npz \
   --result-dir outputs/t0_selfcap/baseline \
-  --start-frame 0 --end-frame 12 \
+  --start-frame 0 --end-frame 60 \
   --max-steps 200 --eval-steps 200 --save-steps 200 \
   --render-traj-path fixed --global-scale 12 \
   --t0-debug-interval 50 \
   --t0-grad-log-path outputs/t0_selfcap/baseline/t0_grad.csv
 
 CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
-  --data-dir data/gate1_fixture_adapted_v2 \
-  --init-npz-path outputs/t0_selfcap/keyframes_12frames_step5.npz \
+  --data-dir /root/projects/4d-recon/data/selfcap_bar_8cam60f \
+  --init-npz-path outputs/t0_selfcap/keyframes_60frames_step5.npz \
   --result-dir outputs/t0_selfcap/zero_velocity \
-  --start-frame 0 --end-frame 12 \
+  --start-frame 0 --end-frame 60 \
   --max-steps 200 --eval-steps 200 --save-steps 200 \
   --render-traj-path fixed --global-scale 12 \
   --t0-debug-interval 50 \
@@ -41,8 +41,13 @@ CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_f
 - Current trainer columns: `step,vel_grad_norm,duration_grad_norm,vel_grad_finite,duration_grad_finite`
 - Compatibility: if future columns change to `grad_v_norm/grad_duration_norm`, checker should accept both names.
 
-## Status (`2026-02-24T10:36:56+08:00`)
-- Dataset used: `data/gate1_fixture_adapted_v2` (fixture fallback)
+## Status (`2026-02-24T11:06:16+08:00`)
+- Dataset used: `/root/projects/4d-recon/data/selfcap_bar_8cam60f` (real selfcap)
 - Baseline: `rows=200, finite=True, nonzero_v=200, nonzero_d=200`
 - Zero-velocity: `rows=200, finite=True, nonzero_v=200, nonzero_d=200`
 - Conclusion: `PASS`
+
+## Historical note
+- Earlier fixture fallback run exists under archived directories:
+  - `outputs/t0_selfcap/baseline_prev_20260224_110513`
+  - `outputs/t0_selfcap/zero_velocity_prev_20260224_110513`

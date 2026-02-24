@@ -1,8 +1,8 @@
 # T0 Gate Decision
 
-- Timestamp: `2026-02-24T10:36:56+08:00`
-- Dataset source: `fixture`
-- Dataset path: `/root/projects/4d-recon/.worktrees/owner-c-20260224/data/gate1_fixture_adapted_v2`
+- Timestamp: `2026-02-24T11:06:16+08:00`
+- Dataset source: `real selfcap`
+- Dataset path: `/root/projects/4d-recon/data/selfcap_bar_8cam60f`
 
 ## Artifacts
 - Baseline CSV: `/root/projects/4d-recon/.worktrees/owner-c-20260224/outputs/t0_selfcap/baseline/t0_grad.csv`
@@ -16,5 +16,5 @@
 - Gate conclusion: `PASS`
 
 ## Notes
-- SelfCap Gate-1 dataset (`data/selfcap_bar_8cam60f`) was not ready in this workspace.
-- This run used the fixture fallback and should be rerun on real SelfCap data once available.
+- This run supersedes the earlier fixture fallback result.
+- Main workspace currently exposes `data/selfcap_bar_8cam60f` (symlinked dataset), and this audit is based on that real dataset path.
