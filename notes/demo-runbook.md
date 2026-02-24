@@ -30,7 +30,7 @@ test -d data/selfcap_bar_8cam60f/triangulation
 2. Protocol v1 (Baseline / Ours-Weak / Control) full runs (GPU2)
 
 说明：
-- 下面 3 条命令的默认参数已对齐 `docs/protocol.yaml`（相机 split/帧段/seed/global_scale/keyframe_step）。
+- 下面 4 条命令的默认参数已对齐 `docs/protocol.yaml`（相机 split/帧段/seed/global_scale/keyframe_step）。
 - 会同时产出 `val_step*.json` + `test_step*.json`，并在 test 上计算 `tLPIPS`（需要 `eval_sample_every_test=1`，默认已启用）。
 
 ```bash
@@ -47,6 +47,13 @@ bash scripts/run_train_ours_weak_selfcap.sh
 # Control: same weak path, but constant mask (no cue)
 GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600 \
 bash scripts/run_train_control_weak_nocue_selfcap.sh
+
+# Ours-Strong (temporal correspondences + corr loss; may stoploss)
+GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_600 \
+bash scripts/run_train_ours_strong_selfcap.sh
+
+# Matching viz (KLT tracks)
+ls -la outputs/correspondences/selfcap_bar_8cam60f_klt/viz
 ```
 
 3. T0 audit (baseline vs zero-velocity, GPU2)
@@ -93,6 +100,7 @@ $PY scripts/pack_evidence.py --repo_root . --out_tar outputs/report_pack_$(date 
 - `outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600/videos/traj_4d_step599.mp4`
 - `outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600/videos/traj_4d_step599.mp4`
 - `outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600/videos/traj_4d_step599.mp4`
+- `outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_600/videos/traj_4d_step599.mp4`
 - `outputs/t0_selfcap/baseline/videos/traj_4d_step199.mp4`
 - `outputs/t0_selfcap/zero_velocity/videos/traj_4d_step199.mp4`
 
