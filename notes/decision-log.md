@@ -118,3 +118,19 @@
 - 梯度检查通过：两组实验 `vel_grad_finite` 与 `duration_grad_finite` 均为全程 `1`，且 `vel/duration` 梯度非零计数均为 `30000/30000`。
 - 先前“缺少 COLMAP 中间产物导致阻塞”的记录已过时，当前 T0 已进入可复现完成态。
 - 下一步建议进入 T1（弱融合闭环）并固定一套可复现配置做后续消融。
+
+### Task A (2026-02-24) - Cue Mining + Weak Fusion MVP
+- 新增 `notes/cue_mining_spec.md`，冻结 `pseudo_masks.npz` 契约：
+  - `masks[T,V,Hm,Wm]`、`camera_names`、`frame_start`、`num_frames`、`mask_downscale`
+  - 明确训练样本 `frame_idx/camera_idx` 到 mask 索引映射规则。
+- 新增 `scripts/cue_mining.py` + `scripts/run_cue_mining.sh` + `scripts/tests/test_cue_mining_contract.py`：
+  - MVP 默认 `--backend diff`（帧差分）可运行；
+  - `--backend vggt` 预留接口，缺依赖时给出明确报错与回退指引。
+- 训练弱融合接入（默认关闭）：
+  - 在 trainer 新增参数：`pseudo_mask_npz`、`pseudo_mask_weight`、`pseudo_mask_end_step`
+  - 仅在 `weight>0` 且 `step<end_step` 时对 L1 启用 mask 加权，其余损失项保持不变。
+- 新增静态回归测试：`scripts/tests/test_weak_fusion_flags.py`。
+- 新增可复现实验入口：
+  - `scripts/run_train_baseline_selfcap.sh`
+  - `scripts/run_train_ours_weak_selfcap.sh`
+  - 默认资源：`GPU=0`、`MAX_STEPS=200`、`RENDER_TRAJ_PATH=fixed`。

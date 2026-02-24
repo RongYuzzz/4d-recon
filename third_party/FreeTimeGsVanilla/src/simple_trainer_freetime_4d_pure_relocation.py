@@ -400,6 +400,16 @@ class Config:
     """Weight for duration regularization. Penalizes wide temporal windows
     that cause temporal blur. Reduced to 1e-3 to prevent excessively narrow profiles."""
 
+    # ==================== Weak Fusion (Pseudo Mask) ====================
+    pseudo_mask_npz: str = ""
+    """Optional path to cue mining NPZ (pseudo_masks.npz). Empty means disabled."""
+
+    pseudo_mask_weight: float = 0.0
+    """Weak fusion weight for mask-weighted L1. 0.0 means disabled (baseline behavior)."""
+
+    pseudo_mask_end_step: int = 0
+    """Apply weak fusion only for step < pseudo_mask_end_step. 0 means disabled."""
+
     # ==================== Training Phases (Annealing Strategy) ====================
     # NOTE: Per FreeTimeGS paper, we do NOT use warmup/canonical phases that freeze velocity.
     # Freezing velocity destroys ROMA initialization by causing positions to drift to average.
@@ -1691,9 +1701,119 @@ class FreeTime4DRunner:
                     f.write("step,vel_grad_norm,duration_grad_norm,vel_grad_finite,duration_grad_finite\n")
             print(f"[T0] Grad log enabled: {self.t0_grad_log_path}")
 
+        # Optional weak fusion pseudo masks (default fully disabled)
+        self.pseudo_masks: Optional[torch.Tensor] = None  # [T, V, Hm, Wm], uint8, CPU
+        self.pseudo_mask_frame_start: int = 0
+        self.pseudo_mask_num_frames: int = 0
+        self.pseudo_mask_cam_map: Optional[torch.Tensor] = None  # [num_train_cams] -> V, CPU
+        self.pseudo_mask_downscale: int = 1
+        self._maybe_load_pseudo_masks()
+
         # Load checkpoint if provided
         if cfg.ckpt_path is not None:
             self.load_checkpoint(cfg.ckpt_path)
+
+    def _maybe_load_pseudo_masks(self) -> None:
+        """Load cue-mined pseudo masks if weak fusion is enabled by config."""
+        cfg = self.cfg
+        if cfg.pseudo_mask_weight <= 0.0 or cfg.pseudo_mask_end_step <= 0:
+            return
+        if not cfg.pseudo_mask_npz:
+            print(
+                "[WeakFusion] pseudo_mask_weight/pseudo_mask_end_step enabled but "
+                "pseudo_mask_npz is empty. Weak fusion disabled."
+            )
+            return
+        if not os.path.exists(cfg.pseudo_mask_npz):
+            raise FileNotFoundError(f"Pseudo mask NPZ not found: {cfg.pseudo_mask_npz}")
+
+        with np.load(cfg.pseudo_mask_npz, allow_pickle=True) as npz:
+            required_keys = {"masks", "camera_names", "frame_start", "num_frames", "mask_downscale"}
+            missing = sorted(required_keys - set(npz.files))
+            if missing:
+                raise ValueError(
+                    f"Pseudo mask NPZ missing keys: {', '.join(missing)} ({cfg.pseudo_mask_npz})"
+                )
+
+            masks = npz["masks"]
+            if masks.ndim != 4:
+                raise ValueError(f"Expected masks.ndim==4, got {masks.ndim}")
+            t, v, hm, wm = masks.shape
+            if t <= 0 or v <= 0 or hm <= 0 or wm <= 0:
+                raise ValueError(f"Invalid masks shape: {masks.shape}")
+
+            frame_start = int(npz["frame_start"])
+            num_frames = int(npz["num_frames"])
+            mask_downscale = int(npz["mask_downscale"])
+            if num_frames != t:
+                raise ValueError(f"num_frames mismatch: meta={num_frames}, masks.T={t}")
+            if mask_downscale <= 0:
+                raise ValueError(f"mask_downscale must be >=1, got {mask_downscale}")
+
+            camera_names = [str(x) for x in npz["camera_names"].tolist()]
+            if len(camera_names) != v:
+                raise ValueError(f"camera_names length mismatch: {len(camera_names)} vs V={v}")
+
+            parser_camera_names = list(self.parser.camera_names)
+            name_to_idx = {name: idx for idx, name in enumerate(camera_names)}
+            missing_cameras = [name for name in parser_camera_names if name not in name_to_idx]
+            if missing_cameras:
+                raise ValueError(
+                    "Pseudo mask camera_names do not cover parser cameras: "
+                    + ", ".join(missing_cameras[:8])
+                )
+            cam_map = [name_to_idx[name] for name in parser_camera_names]
+
+            self.pseudo_masks = torch.from_numpy((masks > 0).astype(np.uint8, copy=False)).cpu()
+            self.pseudo_mask_frame_start = frame_start
+            self.pseudo_mask_num_frames = num_frames
+            self.pseudo_mask_cam_map = torch.tensor(cam_map, dtype=torch.long, device="cpu")
+            self.pseudo_mask_downscale = mask_downscale
+
+        print(
+            "[WeakFusion] Loaded pseudo masks: "
+            f"path={cfg.pseudo_mask_npz}, shape={tuple(self.pseudo_masks.shape)}, "
+            f"frame_start={self.pseudo_mask_frame_start}, "
+            f"num_frames={self.pseudo_mask_num_frames}, "
+            f"weight={cfg.pseudo_mask_weight}, end_step={cfg.pseudo_mask_end_step}"
+        )
+
+    def _get_pseudo_mask_batch(
+        self,
+        frame_idx: Union[Tensor, np.ndarray, List[int]],
+        camera_idx: Union[Tensor, np.ndarray, List[int]],
+        height: int,
+        width: int,
+    ) -> Optional[Tensor]:
+        """Map (frame_idx, camera_idx) to mask tensor [B,1,H,W] on self.device."""
+        if self.pseudo_masks is None or self.pseudo_mask_cam_map is None:
+            return None
+
+        frame_idx_t = torch.as_tensor(frame_idx, dtype=torch.long, device="cpu").view(-1)
+        camera_idx_t = torch.as_tensor(camera_idx, dtype=torch.long, device="cpu").view(-1)
+
+        if (camera_idx_t < 0).any() or (camera_idx_t >= len(self.pseudo_mask_cam_map)).any():
+            raise ValueError(
+                f"camera_idx out of range for pseudo masks: "
+                f"min={int(camera_idx_t.min())}, max={int(camera_idx_t.max())}, "
+                f"num_cameras={len(self.pseudo_mask_cam_map)}"
+            )
+
+        t = frame_idx_t - self.pseudo_mask_frame_start
+        if (t < 0).any() or (t >= self.pseudo_mask_num_frames).any():
+            raise ValueError(
+                f"frame_idx out of pseudo mask range: "
+                f"frame_idx[min,max]=({int(frame_idx_t.min())},{int(frame_idx_t.max())}), "
+                f"mask_range=[{self.pseudo_mask_frame_start},"
+                f"{self.pseudo_mask_frame_start + self.pseudo_mask_num_frames})"
+            )
+
+        view_idx = self.pseudo_mask_cam_map[camera_idx_t]  # [B]
+        mask_small = self.pseudo_masks[t, view_idx]  # [B,Hm,Wm]
+        mask = (mask_small > 0).to(device=self.device, dtype=torch.float32).unsqueeze(1)  # [B,1,Hm,Wm]
+        if tuple(mask.shape[-2:]) != (height, width):
+            mask = F.interpolate(mask, size=(height, width), mode="nearest")
+        return mask
 
     def load_checkpoint(self, ckpt_path: str):
         """Load model and optimizer states from checkpoint."""
@@ -2396,7 +2516,31 @@ class FreeTime4DRunner:
             pixels_p = pixels.permute(0, 3, 1, 2)  # [B, 3, H, W]
 
             # 1. L1 Loss (reconstruction)
-            l1_loss = F.l1_loss(colors, pixels)
+            weighted_l1_loss: Optional[Tensor] = None
+            pseudo_mask_active_ratio: Optional[float] = None
+            use_weak_fusion = (
+                self.pseudo_masks is not None
+                and cfg.pseudo_mask_weight > 0.0
+                and cfg.pseudo_mask_end_step > 0
+                and step < cfg.pseudo_mask_end_step
+            )
+            if use_weak_fusion:
+                mask_batch = self._get_pseudo_mask_batch(
+                    frame_idx=data["frame_idx"],
+                    camera_idx=data["camera_idx"],
+                    height=height,
+                    width=width,
+                )  # [B,1,H,W]
+                if mask_batch is not None:
+                    # w = 1 + alpha * mask, then normalize by mean(w) to keep loss scale stable.
+                    w = 1.0 + cfg.pseudo_mask_weight * mask_batch.permute(0, 2, 3, 1)  # [B,H,W,1]
+                    weighted_l1_loss = (torch.abs(colors - pixels) * w).mean() / w.mean().clamp(min=1e-6)
+                    l1_loss = weighted_l1_loss
+                    pseudo_mask_active_ratio = float(mask_batch.mean().item())
+                else:
+                    l1_loss = F.l1_loss(colors, pixels)
+            else:
+                l1_loss = F.l1_loss(colors, pixels)
 
             # 2. SSIM Loss (structural similarity)
             ssim_val = fused_ssim(colors_p, pixels_p, padding="valid")
@@ -2558,6 +2702,8 @@ class FreeTime4DRunner:
                 self.writer.add_scalar("loss_weighted/ssim", loss_ssim.item(), step)
                 self.writer.add_scalar("loss_weighted/lpips", loss_lpips.item(), step)
                 self.writer.add_scalar("loss_weighted/4d_reg", loss_4d_reg.item(), step)
+                if pseudo_mask_active_ratio is not None:
+                    self.writer.add_scalar("pseudo_mask/active_ratio", pseudo_mask_active_ratio, step)
 
                 # --- Quality Metrics ---
                 self.writer.add_scalar("metrics/ssim", ssim_val.item(), step)  # Higher is better
