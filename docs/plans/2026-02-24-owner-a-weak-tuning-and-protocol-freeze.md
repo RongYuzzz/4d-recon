@@ -31,45 +31,59 @@ Expected:
 
 ## Task A18: Protocol 冻结与主线 Git Hygiene（一次性把“口径”定死）
 
-动机：
-- 当前已有 `docs/protocol.yaml` 与 `docs/protocols/protocol_v1.yaml`（含更新策略与 midterm/final 要求）；需要入库并让 `docs/README.md` / `README.md` 指向它，避免口径漂移。
+说明：
+- `docs/protocol.yaml` 已作为唯一真源合入 main（protocol v1）。
+- 本任务只做“确认 + 遵循”，避免后续换帧段/换相机/换超参导致对比不成立。
 
-Files:
-- Add: `docs/protocol.yaml`
-- Add: `docs/protocols/protocol_v1.yaml`
-- (Optional) Update: `docs/README.md`（加一段“本项目以 protocol 为单一真相源”）
-- (Optional) Update: `notes/decision-log.md`（记录 protocol v1 frozen）
+Run（只读检查）：
+```bash
+cd /root/projects/4d-recon
+ls -la docs/protocol.yaml docs/protocols/protocol_v1.yaml
+sed -n '1,140p' docs/protocol.yaml
+```
 
 验收：
-- `git status` 显示 protocol 文件已入库（plan 本身不要求 push）
-- 协议里 `dataset.root=data/selfcap_bar_8cam60f` 与当前目录一致
+- `docs/protocol.yaml` 指向 `docs/protocols/protocol_v1.yaml`
+- 协议中关键项与当前口径一致：
+  - `dataset.root=data/selfcap_bar_8cam60f`
+  - cameras used/train/val/test：`02-09 / 02-07 / 08 / 09`
+  - `seed=42`、`keyframe_step=5`、`global_scale=6`、`max_steps_full=600`
 
 ---
 
-## Task A19: 固化 cue mining 的 canonical 输出路径（对齐 protocol v1）
+## Task A19: Cue Mining 定版（vggt 24h 尝试 + fallback diff）
 
 当前问题：
-- 已有的 `pseudo_masks.npz` 产物路径可能与 `docs/protocol.yaml` 的 `ours_weak.cue_mining.output_npz` 不一致，导致现场复现“找不到文件/跑到旧产物”。
+- Ours-Weak 的关键风险不是“能不能生成文件”，而是 cue 是否**稳定且可辩护**（不全黑/全白/随机噪声/严重时序抖动）。
 
 目标：
 - 让 protocol 的 `outputs/cue_mining/selfcap_bar_8cam60f_v1/pseudo_masks.npz` **真实存在且可复现生成**。
 
-建议做法（二选一，优先 1）：
-1. 直接用当前 `scripts/run_cue_mining.sh` 重新生成一次到 v1 目录（最干净、最可审计）。
-2. 若时间非常紧：对已有的 `pseudo_masks.npz` 建立软链到 v1（但要在 notes 里写清“源自哪个 tag/命令”）。
+止损线（对齐 `docs/protocol.yaml`）：
+- timebox：24h
+- fail 条件：cue 全黑/全白、随机噪声、严重 temporal flicker
+- 触发 stoploss 后：保留失败证据（viz + 日志）并切换 diff backend 继续推进（Weak 占位实现仍要可复现跑通）
 
-Run（示例，方案 1）：
+Run（1) 尝试 vggt backend；失败不阻塞后续）：
 ```bash
 cd /root/projects/4d-recon
-GPU=0 \
-OUT_DIR=outputs/cue_mining/selfcap_bar_8cam60f_v1 \
+GPU=0 OUT_DIR=outputs/cue_mining/selfcap_bar_8cam60f_v1 \
+bash scripts/run_cue_mining.sh data/selfcap_bar_8cam60f selfcap_bar_8cam60f_v1 0 60 vggt 4 || true
+```
+
+Run（2) fallback diff backend，确保 canonical 产物存在）：
+```bash
+cd /root/projects/4d-recon
+GPU=0 OUT_DIR=outputs/cue_mining/selfcap_bar_8cam60f_v1 \
 bash scripts/run_cue_mining.sh data/selfcap_bar_8cam60f selfcap_bar_8cam60f_v1 0 60 diff 4
 ls -la outputs/cue_mining/selfcap_bar_8cam60f_v1/pseudo_masks.npz
 ```
 
 验收：
 - `outputs/cue_mining/selfcap_bar_8cam60f_v1/pseudo_masks.npz` 存在
-- `outputs/cue_mining/selfcap_bar_8cam60f_v1/viz/overlay_cam02_frame000000.jpg` 存在（便于汇报引用）
+- `outputs/cue_mining/selfcap_bar_8cam60f_v1/viz/overlay_cam02_frame000000.jpg` 与 `grid_frame000000.jpg` 存在（便于汇报引用）
+- vggt backend 若输出 `range=[0,0]` 或 `range=[255,255]`：视为 stoploss（记录失败证据后切换 diff）
+- diff backend 若输出 `range=[0,0]`：视为“无 cue”，弱融合等价 baseline，可继续推进但必须记录（说明为何不影响结论/为何需要后续更强 cue）
 
 ---
 
@@ -92,17 +106,18 @@ Run（示例）：
 ```bash
 cd /root/projects/4d-recon
 for w in 0.1 0.2 0.3 0.5; do
-  GPU=0 MAX_STEPS=200 \
-  RESULT_DIR=outputs/gate1_selfcap_weak_sweep_w${w}_end200 \
+  GPU=0 MAX_STEPS=200 EVAL_ON_TEST=0 \
+  RESULT_DIR=outputs/sweeps/selfcap_bar_weak_w${w}_end200_s200 \
   CUE_TAG=selfcap_bar_8cam60f_v1 CUE_BACKEND=diff MASK_DOWNSCALE=4 \
   PSEUDO_MASK_WEIGHT=$w PSEUDO_MASK_END_STEP=200 \
   bash scripts/run_train_ours_weak_selfcap.sh
 done
-python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
+PY=/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python
+$PY scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
 ```
 
 验收：
-- 4 个 run 都产出 `videos/traj_4d_step199.mp4` 与 `stats/val_step0199.json`
+- 4 个 run 都产出 `videos/traj_4d_step199.mp4` 与 `stats/val_step0199.json`（sweep 阶段可不跑 test 以省时）
 - `outputs/report_pack/metrics.csv` 增加对应行（可被证据包捕捉）
 - 新增记录：`notes/weak_tuning_selfcap_bar.md`（写明组合、指标、观察到的失败模式）
 
@@ -118,19 +133,20 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 Run（示例）：
 ```bash
 cd /root/projects/4d-recon
-GPU=0 MAX_STEPS=600 \
-RESULT_DIR=outputs/gate1_selfcap_ours_weak_tuned_600 \
+GPU=0 MAX_STEPS=600 EVAL_ON_TEST=1 EVAL_SAMPLE_EVERY_TEST=1 \
+RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_tuned_600 \
 CUE_TAG=selfcap_bar_8cam60f_v1 CUE_BACKEND=diff MASK_DOWNSCALE=4 \
 PSEUDO_MASK_WEIGHT=0.2 PSEUDO_MASK_END_STEP=200 \
 bash scripts/run_train_ours_weak_selfcap.sh
 
-python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
-python3 scripts/pack_evidence.py --out_tar outputs/midterm_evidence_2026-02-24-v4.tar.gz
+PY=/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python
+$PY scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
 ```
 
 验收：
-- `outputs/gate1_selfcap_ours_weak_tuned_600/videos/traj_4d_step599.mp4` 存在
-- `metrics.csv` 含 tuned 条目，并在 `ablation_notes.md` 解释 tuned 的选择原因
+- `outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_tuned_600/videos/traj_4d_step599.mp4` 存在
+- `stats/val_step0599.json` 与 `stats/test_step0599.json` 存在（test json 应含 `tlpips`）
+- `outputs/report_pack/metrics.csv` 含对应 val/test 两行，并在 `notes/weak_tuning_selfcap_bar.md` 解释 tuned 的选择原因
 
 ---
 
@@ -146,4 +162,3 @@ python3 scripts/pack_evidence.py --out_tar outputs/midterm_evidence_2026-02-24-v
 验收：
 - baseline 不受影响（同命令输出一致、测试不回归）
 - 至少 1 个替代设置在 200-step 不明显劣化，能进入 A21 的 600-step 复跑
-

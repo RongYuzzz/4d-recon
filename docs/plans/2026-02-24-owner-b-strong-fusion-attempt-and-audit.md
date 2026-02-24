@@ -14,7 +14,7 @@
 
 **Parallel Safety:** Owner B 主要占用 `GPU1`，不阻塞 A（GPU0 weak tuning）与 C（GPU2 报表/打包）。
 
-**Default Resources:** `GPU1`；优先 1 次 `60-step` smoke + 1 次 `200-step` 选参 + 1 次 `600-step` 交付 run（最多 3 次 full run，对齐 protocol v1）。
+**Default Resources:** `GPU1`；以 `docs/protocol.yaml` 为真源，强融合按协议 timebox `72h`、最多 `3` 次 `600-step` full run；其余只做 `60/200-step` short sanity（避免在 strong 上无止境 sweep）。
 
 ---
 
@@ -42,7 +42,7 @@ Run（示例）：
 ```bash
 cd /root/projects/4d-recon
 GPU=1 MAX_STEPS=60 \
-RESULT_DIR=outputs/gate1_selfcap_ours_strong_smoke60 \
+RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_smoke60 \
 TEMPORAL_CORR_NPZ=outputs/correspondences/selfcap_bar_8cam60f_klt/temporal_corr.npz \
 LAMBDA_CORR=0.05 TEMPORAL_CORR_END_STEP=60 TEMPORAL_CORR_MAX_PAIRS=200 \
 PSEUDO_MASK_WEIGHT=0.2 PSEUDO_MASK_END_STEP=60 \
@@ -50,9 +50,9 @@ bash scripts/run_train_ours_strong_selfcap.sh
 ```
 
 验收：
-- `outputs/gate1_selfcap_ours_strong_smoke60/videos/traj_4d_step59.mp4` 存在
-- 日志中出现 strong 配置加载信息（`[StrongFusion] Loaded temporal corr...`）
-- `corr_pairs > 0`（表示 loss 实际生效，不是被自动禁用）
+- `outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_smoke60/videos/traj_4d_step59.mp4` 存在
+- 日志中出现 strong 配置加载信息（`[StrongFusion] Loaded temporal correspondences...`）
+- 没有出现 `Strong fusion disabled` 的警告（例如像素空间不一致导致自动禁用）
 
 备注：
 - 若 step 过慢或 IO 过重，优先把 `TEMPORAL_CORR_MAX_PAIRS` 降到 `50~200`（避免每步处理 500 对应）。
@@ -79,13 +79,14 @@ Run（示例）：
 cd /root/projects/4d-recon
 for lam in 0.01 0.02 0.05; do
   GPU=1 MAX_STEPS=200 \
-  RESULT_DIR=outputs/gate1_selfcap_ours_strong_sweep_lam${lam} \
+  RESULT_DIR=outputs/sweeps/selfcap_bar_strong_lam${lam}_end200_pairs200_s200 \
   TEMPORAL_CORR_NPZ=outputs/correspondences/selfcap_bar_8cam60f_klt/temporal_corr.npz \
   LAMBDA_CORR=$lam TEMPORAL_CORR_END_STEP=200 TEMPORAL_CORR_MAX_PAIRS=200 \
   PSEUDO_MASK_WEIGHT=0.2 PSEUDO_MASK_END_STEP=200 \
   bash scripts/run_train_ours_strong_selfcap.sh
 done
-python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
+PY=/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python
+$PY scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
 ```
 
 验收：
@@ -105,17 +106,18 @@ Run（示例）：
 ```bash
 cd /root/projects/4d-recon
 GPU=1 MAX_STEPS=600 \
-RESULT_DIR=outputs/gate1_selfcap_ours_strong_600 \
+RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_600 \
 TEMPORAL_CORR_NPZ=outputs/correspondences/selfcap_bar_8cam60f_klt/temporal_corr.npz \
 LAMBDA_CORR=0.02 TEMPORAL_CORR_END_STEP=200 TEMPORAL_CORR_MAX_PAIRS=200 \
 PSEUDO_MASK_WEIGHT=0.2 PSEUDO_MASK_END_STEP=200 \
 bash scripts/run_train_ours_strong_selfcap.sh
 
-python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
+PY=/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python
+$PY scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
 ```
 
 验收：
-- `outputs/gate1_selfcap_ours_strong_600/videos/traj_4d_step599.mp4` 存在
+- `outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_600/videos/traj_4d_step599.mp4` 存在
 - `outputs/report_pack/metrics.csv` 含 strong 条目（gate 应为 `gate1`）
 
 ---
@@ -154,4 +156,3 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 验收：
 - 不开启 strong 时 baseline/weak 行为不变
 - strong run `corr_pairs` 稳定非 0，或 step 时间显著下降
-
