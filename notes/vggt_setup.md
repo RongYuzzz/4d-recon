@@ -81,3 +81,57 @@ bash scripts/run_cue_mining.sh /root/autodl-tmp/projects/4d-recon/data/selfcap_b
 - `outputs/cue_mining/selfcap_bar_8cam60f_vggt_full60/quality.json`
 - `outputs/cue_mining/selfcap_bar_8cam60f_vggt_full60/viz/overlay_cam02_frame000000.jpg`
 - `outputs/cue_mining/selfcap_bar_8cam60f_vggt_full60/viz/grid_frame000000.jpg`
+
+## 6) GT Feature Cache 生成（feature metric loss v1）
+
+新增脚本：`scripts/precompute_vggt_cache.py`
+
+- 输出文件：
+  - `gt_cache.npz`（`phi[T,V,C,Hf,Wf]` + 关键 meta）
+  - `meta.json`（可读元信息）
+- 后端：
+  - `--backend dummy`：用于契约测试（不依赖真实 VGGT）
+  - `--backend vggt`：真实 VGGT 前向缓存
+
+### 6.1 dummy（本地契约测试）
+
+```bash
+cd /root/projects/4d-recon/.worktrees/owner-b-20260224-vggt-feature-loss-v1
+python3 scripts/precompute_vggt_cache.py \
+  --data_dir /tmp/toy_data \
+  --out_dir outputs/vggt_cache/toy_dummy \
+  --camera_ids 02,03 \
+  --frame_start 0 \
+  --num_frames 3 \
+  --backend dummy \
+  --phi_name dummy_rgb \
+  --phi_downscale 4 \
+  --overwrite
+```
+
+### 6.2 vggt（SelfCap bar short smoke）
+
+```bash
+cd /root/projects/4d-recon/.worktrees/owner-b-20260224-vggt-feature-loss-v1
+export HF_HUB_OFFLINE=1
+export HF_HUB_DISABLE_XET=1
+/usr/bin/time -p /root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python \
+  scripts/precompute_vggt_cache.py \
+  --data_dir /root/autodl-tmp/projects/4d-recon/data/selfcap_bar_8cam60f \
+  --out_dir outputs/vggt_cache/selfcap_bar_8cam60f_depth_smoke2 \
+  --camera_ids 02,03 \
+  --frame_start 0 \
+  --num_frames 2 \
+  --backend vggt \
+  --phi_name depth \
+  --phi_downscale 4 \
+  --vggt_model_id facebook/VGGT-1B \
+  --overwrite
+```
+
+实测（2 帧 × 2 机位，`phi=depth`，A6000）：
+- 输出 shape：`phi=(2, 2, 1, 129, 129)`（`input_size=518x518`, `phi_size=129x129`）
+- 耗时：
+  - `real 12.56s`
+  - `user 93.60s`
+  - `sys 11.37s`
