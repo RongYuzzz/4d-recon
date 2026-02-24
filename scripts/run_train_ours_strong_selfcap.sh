@@ -47,6 +47,7 @@ TEMPORAL_CORR_NPZ="${TEMPORAL_CORR_NPZ:-$TEMPORAL_CORR_DIR/temporal_corr.npz}"
 LAMBDA_CORR="${LAMBDA_CORR:-0.01}"
 TEMPORAL_CORR_END_STEP="${TEMPORAL_CORR_END_STEP:-200}"
 TEMPORAL_CORR_MAX_PAIRS="${TEMPORAL_CORR_MAX_PAIRS:-200}"
+TEMPORAL_CORR_LOSS_MODE="${TEMPORAL_CORR_LOSS_MODE:-pred_gt}"
 TEMPORAL_CORR_CAMERA_IDS="${TEMPORAL_CORR_CAMERA_IDS:-02,03,04,05,06,07,08,09}"
 
 TOTAL_FRAMES=$((END_FRAME - START_FRAME))
@@ -113,7 +114,7 @@ echo "[Ours-Strong] frame range: [$START_FRAME, $END_FRAME)"
 echo "[Ours-Strong] gpu/max:     $GPU / $MAX_STEPS"
 echo "[Ours-Strong] seed:        $SEED"
 echo "[Ours-Strong] weak:        weight=$PSEUDO_MASK_WEIGHT end_step=$PSEUDO_MASK_END_STEP"
-echo "[Ours-Strong] strong:      lambda=$LAMBDA_CORR end_step=$TEMPORAL_CORR_END_STEP max_pairs=$TEMPORAL_CORR_MAX_PAIRS"
+echo "[Ours-Strong] strong:      lambda=$LAMBDA_CORR end_step=$TEMPORAL_CORR_END_STEP max_pairs=$TEMPORAL_CORR_MAX_PAIRS mode=$TEMPORAL_CORR_LOSS_MODE"
 
 "$VENV_PYTHON" "$COMBINE_SCRIPT" \
   --input-dir "$DATA_DIR/triangulation" \
@@ -146,6 +147,7 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --lambda-corr "$LAMBDA_CORR" \
   --temporal-corr-end-step "$TEMPORAL_CORR_END_STEP" \
   --temporal-corr-max-pairs "$TEMPORAL_CORR_MAX_PAIRS" \
+  --temporal-corr-loss-mode "$TEMPORAL_CORR_LOSS_MODE" \
   $(if [ "$EVAL_ON_TEST" = "1" ]; then echo --eval-on-test; fi)
 
 echo "[Ours-Strong] Done: $RESULT_DIR"

@@ -13,22 +13,38 @@ TRAINER = (
     / "src"
     / "simple_trainer_freetime_4d_pure_relocation.py"
 )
+RUN_STRONG_SCRIPT = REPO_ROOT / "scripts" / "run_train_ours_strong_selfcap.sh"
 
 
 def run_test() -> None:
-    text = TRAINER.read_text(encoding="utf-8")
-    required_tokens = [
+    trainer_text = TRAINER.read_text(encoding="utf-8")
+    required_trainer_tokens = [
         "temporal_corr_npz",
         "lambda_corr",
         "temporal_corr_end_step",
         "temporal_corr_max_pairs",
+        "temporal_corr_loss_mode",
+        "pred_pred",
         "_maybe_load_temporal_corr",
         "_compute_temporal_corr_loss",
         "loss_corr",
     ]
-    missing = [token for token in required_tokens if token not in text]
-    if missing:
-        raise AssertionError(f"missing strong fusion tokens: {', '.join(missing)}")
+    missing_trainer = [token for token in required_trainer_tokens if token not in trainer_text]
+    if missing_trainer:
+        raise AssertionError(
+            "missing strong fusion tokens in trainer: " + ", ".join(missing_trainer)
+        )
+
+    run_script_text = RUN_STRONG_SCRIPT.read_text(encoding="utf-8")
+    required_script_tokens = [
+        "TEMPORAL_CORR_LOSS_MODE",
+        "--temporal-corr-loss-mode",
+    ]
+    missing_script = [token for token in required_script_tokens if token not in run_script_text]
+    if missing_script:
+        raise AssertionError(
+            "missing strong fusion tokens in run script: " + ", ".join(missing_script)
+        )
 
 
 if __name__ == "__main__":

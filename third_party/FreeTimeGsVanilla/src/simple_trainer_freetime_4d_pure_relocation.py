@@ -445,6 +445,9 @@ class Config:
     temporal_corr_max_pairs: int = 0
     """Max correspondences used per sample per step. 0 means use all for that (cam, frame) pair."""
 
+    temporal_corr_loss_mode: str = "pred_gt"
+    """Temporal correspondence target mode: 'pred_gt' (v1) or 'pred_pred' (v2)."""
+
     # ==================== Training Phases (Annealing Strategy) ====================
     # NOTE: Per FreeTimeGS paper, we do NOT use warmup/canonical phases that freeze velocity.
     # Freezing velocity destroys ROMA initialization by causing positions to drift to average.
@@ -1891,6 +1894,12 @@ class FreeTime4DRunner:
         cfg = self.cfg
         if cfg.lambda_corr <= 0.0 or cfg.temporal_corr_end_step <= 0:
             return
+        cfg.temporal_corr_loss_mode = str(cfg.temporal_corr_loss_mode).strip().lower()
+        if cfg.temporal_corr_loss_mode not in ("pred_gt", "pred_pred"):
+            raise ValueError(
+                "temporal_corr_loss_mode must be one of {'pred_gt','pred_pred'}, "
+                f"got {cfg.temporal_corr_loss_mode!r}"
+            )
         if not cfg.temporal_corr_npz:
             raise ValueError(
                 "Strong fusion requested (lambda_corr/temporal_corr_end_step) but temporal_corr_npz is empty"
@@ -2004,7 +2013,7 @@ class FreeTime4DRunner:
             f"path={cfg.temporal_corr_npz}, N={int(src_xy.shape[0])}, "
             f"groups={len(self.temporal_corr_groups)}, "
             f"lambda_corr={cfg.lambda_corr}, end_step={cfg.temporal_corr_end_step}, "
-            f"factor={self.temporal_corr_factor}"
+            f"factor={self.temporal_corr_factor}, mode={cfg.temporal_corr_loss_mode}"
         )
 
     def _load_rgb_image_for_corr(self, cam_idx: int, frame_idx: int) -> np.ndarray:
@@ -2044,6 +2053,9 @@ class FreeTime4DRunner:
         data: Dict[str, Any],
         height: int,
         width: int,
+        camtoworlds: Tensor,
+        Ks: Tensor,
+        sh_degree: int,
     ) -> Tuple[Tensor, int]:
         """Compute per-step temporal correspondence loss (nearest neighbor sampling)."""
         if (
@@ -2061,8 +2073,10 @@ class FreeTime4DRunner:
         weight_sum = torch.tensor(0.0, device=self.device)
         total_pairs = 0
 
+        loss_mode = str(self.cfg.temporal_corr_loss_mode).strip().lower()
         factor = max(int(self.temporal_corr_factor), 1)
         max_pairs = int(self.temporal_corr_max_pairs)
+        denom = max((int(self.cfg.end_frame) - int(self.cfg.start_frame)) - 1, 1)
 
         for b in range(int(cam_idx_t.numel())):
             cam_idx = int(cam_idx_t[b].item())
@@ -2076,13 +2090,7 @@ class FreeTime4DRunner:
                 continue
 
             if max_pairs > 0 and idxs.size > max_pairs:
-                idxs = idxs[:max_pairs]
-
-            # Load destination GT image once per sample.
-            dst_img = self._load_rgb_image_for_corr(cam_idx, int(dst_frame))
-            if dst_img.shape[0] != height or dst_img.shape[1] != width:
-                # Mismatch likely indicates undistortion/crop space mismatch.
-                continue
+                idxs = np.random.choice(idxs, size=max_pairs, replace=False).astype(np.int32, copy=False)
 
             src_xy = self.temporal_corr_src_xy[idxs]
             dst_xy = self.temporal_corr_dst_xy[idxs]
@@ -2104,14 +2112,33 @@ class FreeTime4DRunner:
 
             # Predicted colors at source coords (grad flows to colors -> splats).
             lin0 = torch.from_numpy(y0 * width + x0).to(device=self.device, dtype=torch.long)
-            pred = colors[b].contiguous().view(-1, 3).index_select(0, lin0)  # [N,3]
+            pred_src = colors[b].contiguous().view(-1, 3).index_select(0, lin0)  # [N,3]
+            lin1 = torch.from_numpy(y1 * width + x1).to(device=self.device, dtype=torch.long)
 
-            # GT colors at destination coords (no grad).
-            gt_np = (dst_img[y1, x1].astype(np.float32) / 255.0).reshape(-1, 3)
-            gt = torch.from_numpy(gt_np).to(device=self.device, dtype=torch.float32)
+            if loss_mode == "pred_pred":
+                # V2: pred_t(src_xy) vs pred_t'(dst_xy). Uses an extra rasterization at dst time.
+                t_dst = float((int(dst_frame) - int(self.cfg.start_frame)) / float(denom))
+                renders_dst, _, _ = self.rasterize_splats(
+                    camtoworlds=camtoworlds[b : b + 1],
+                    Ks=Ks[b : b + 1],
+                    width=width,
+                    height=height,
+                    t=t_dst,
+                    sh_degree=sh_degree,
+                )
+                colors_dst = torch.clamp(renders_dst[0, ..., :3], 0.0, 1.0).contiguous().view(-1, 3)
+                target = colors_dst.index_select(0, lin1)
+            else:
+                # V1: pred_t(src_xy) vs GT_t'(dst_xy)
+                dst_img = self._load_rgb_image_for_corr(cam_idx, int(dst_frame))
+                if dst_img.shape[0] != height or dst_img.shape[1] != width:
+                    # Mismatch likely indicates undistortion/crop space mismatch.
+                    continue
+                gt_np = (dst_img[y1, x1].astype(np.float32) / 255.0).reshape(-1, 3)
+                target = torch.from_numpy(gt_np).to(device=self.device, dtype=torch.float32)
 
             w = torch.from_numpy(w_np.astype(np.float32, copy=False)).to(device=self.device, dtype=torch.float32)
-            diff = (pred - gt).abs().mean(dim=-1)  # [N]
+            diff = (pred_src - target).abs().mean(dim=-1)  # [N]
             loss_sum = loss_sum + (diff * w).sum()
             weight_sum = weight_sum + w.sum()
             total_pairs += int(diff.numel())
@@ -2948,7 +2975,17 @@ class FreeTime4DRunner:
                     data=data,
                     height=height,
                     width=width,
+                    camtoworlds=camtoworlds,
+                    Ks=Ks,
+                    sh_degree=sh_degree,
                 )
+                if step % max(int(cfg.tb_every), 1) == 0:
+                    print(
+                        "[StrongFusion] "
+                        f"corr_mode={cfg.temporal_corr_loss_mode} "
+                        f"corr_pairs={corr_pairs} "
+                        f"corr_loss={float(corr_loss.item()):.6f}"
+                    )
             loss_corr = cfg.lambda_corr * corr_loss
 
             # Total loss

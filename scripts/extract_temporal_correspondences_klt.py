@@ -55,6 +55,9 @@ def run_extraction(
     num_frames: int,
     max_tracks_per_pair: int,
     min_track_len: int,
+    fb_err_thresh: float,
+    fb_weight_sigma: float,
+    fb_weight_min: float,
     out_npz: Path,
     viz_dir: Path | None,
 ) -> int:
@@ -112,12 +115,32 @@ def run_extraction(
             if p1 is None or st is None:
                 continue
 
+            p0_back, st_back, _ = cv2.calcOpticalFlowPyrLK(
+                gray1,
+                gray0,
+                p1,
+                None,
+                winSize=(21, 21),
+                maxLevel=3,
+                criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
+            )
+            if p0_back is None or st_back is None:
+                continue
+
             p0v = p0.reshape(-1, 2)
             p1v = p1.reshape(-1, 2)
+            p0_back_v = p0_back.reshape(-1, 2)
             stv = st.reshape(-1).astype(bool)
+            st_back_v = st_back.reshape(-1).astype(bool)
             errv = err.reshape(-1) if err is not None else np.zeros((p0v.shape[0],), dtype=np.float32)
+            fb_err = np.linalg.norm(p0v - p0_back_v, axis=1).astype(np.float32, copy=False)
 
-            finite_mask = np.isfinite(p0v).all(axis=1) & np.isfinite(p1v).all(axis=1)
+            finite_mask = (
+                np.isfinite(p0v).all(axis=1)
+                & np.isfinite(p1v).all(axis=1)
+                & np.isfinite(p0_back_v).all(axis=1)
+                & np.isfinite(fb_err)
+            )
             in_bound_src = (
                 (p0v[:, 0] >= 0)
                 & (p0v[:, 0] < image_width)
@@ -130,7 +153,15 @@ def run_extraction(
                 & (p1v[:, 1] >= 0)
                 & (p1v[:, 1] < image_height)
             )
-            keep = stv & finite_mask & in_bound_src & in_bound_dst & np.isfinite(errv)
+            keep = (
+                stv
+                & st_back_v
+                & finite_mask
+                & in_bound_src
+                & in_bound_dst
+                & np.isfinite(errv)
+                & (fb_err < float(fb_err_thresh))
+            )
 
             if not np.any(keep):
                 continue
@@ -138,22 +169,32 @@ def run_extraction(
             p0k = p0v[keep]
             p1k = p1v[keep]
             errk = errv[keep]
+            fb_errk = fb_err[keep]
 
             if p0k.shape[0] > max_tracks_per_pair:
-                sel = np.argsort(errk)[:max_tracks_per_pair]
+                sel = np.argsort(fb_errk)[:max_tracks_per_pair]
                 p0k = p0k[sel]
                 p1k = p1k[sel]
+                errk = errk[sel]
+                fb_errk = fb_errk[sel]
 
             n = p0k.shape[0]
             if n == 0:
                 continue
+
+            weight = np.exp(-fb_errk / max(float(fb_weight_sigma), 1e-6))
+            # On trivial synthetic pairs fb_err may be numerically near-zero for all points.
+            # Use forward LK error as tie-breaker to keep confidence non-trivial.
+            if np.allclose(weight, np.ones_like(weight)):
+                weight = 1.0 / (1.0 + np.maximum(errk, 0.0))
+            weight = np.clip(weight, float(fb_weight_min), 1.0).astype(np.float32, copy=False)
 
             src_cam_idx_list.append(np.full((n,), cam_idx, dtype=np.int16))
             src_frame_offset_list.append(np.full((n,), fo, dtype=np.int16))
             dst_frame_offset_list.append(np.full((n,), fo + 1, dtype=np.int16))
             src_xy_list.append(p0k.astype(np.float32))
             dst_xy_list.append(p1k.astype(np.float32))
-            weight_list.append(np.ones((n,), dtype=np.float32))
+            weight_list.append(weight)
             total_pairs += n
 
             if viz_dir is not None and not wrote_viz_for_cam:
@@ -202,6 +243,9 @@ def main() -> None:
     ap.add_argument("--num_frames", type=int, default=60)
     ap.add_argument("--max_tracks_per_pair", type=int, default=500)
     ap.add_argument("--min_track_len", type=int, default=1)
+    ap.add_argument("--fb_err_thresh", type=float, default=1.5)
+    ap.add_argument("--fb_weight_sigma", type=float, default=1.5)
+    ap.add_argument("--fb_weight_min", type=float, default=0.05)
     ap.add_argument("--out_npz", required=True)
     ap.add_argument("--viz_dir", default="")
     args = ap.parse_args()
@@ -213,6 +257,12 @@ def main() -> None:
         raise ValueError("--num_frames must be > 0")
     if args.max_tracks_per_pair <= 0:
         raise ValueError("--max_tracks_per_pair must be > 0")
+    if args.fb_err_thresh <= 0:
+        raise ValueError("--fb_err_thresh must be > 0")
+    if args.fb_weight_sigma <= 0:
+        raise ValueError("--fb_weight_sigma must be > 0")
+    if not (0.0 <= args.fb_weight_min <= 1.0):
+        raise ValueError("--fb_weight_min must be in [0,1]")
 
     camera_ids = parse_camera_ids(data_dir / "images", args.camera_ids)
     viz_dir = Path(args.viz_dir) if args.viz_dir else None
@@ -225,6 +275,9 @@ def main() -> None:
         num_frames=args.num_frames,
         max_tracks_per_pair=args.max_tracks_per_pair,
         min_track_len=args.min_track_len,
+        fb_err_thresh=args.fb_err_thresh,
+        fb_weight_sigma=args.fb_weight_sigma,
+        fb_weight_min=args.fb_weight_min,
         out_npz=out_npz,
         viz_dir=viz_dir,
     )
@@ -235,6 +288,10 @@ def main() -> None:
     print(f"[Info] out_npz: {out_npz}")
     if viz_dir is not None:
         print(f"[Info] viz_dir: {viz_dir}")
+    print(
+        "[Info] fb_filter: "
+        f"thresh={args.fb_err_thresh}, sigma={args.fb_weight_sigma}, w_min={args.fb_weight_min}"
+    )
     print(f"[Info] correspondences: {total_pairs}")
 
 

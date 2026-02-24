@@ -38,6 +38,12 @@ class TemporalCorrespondenceKLTContractTests(unittest.TestCase):
                 "300",
                 "--min_track_len",
                 "1",
+                "--fb_err_thresh",
+                "1.5",
+                "--fb_weight_sigma",
+                "1.5",
+                "--fb_weight_min",
+                "0.05",
                 "--out_npz",
                 str(out_npz),
                 "--viz_dir",
@@ -68,6 +74,15 @@ class TemporalCorrespondenceKLTContractTests(unittest.TestCase):
             self.assertEqual(src_xy.ndim, 2)
             self.assertEqual(src_xy.shape[1], 2)
             self.assertGreater(src_xy.shape[0], 0)
+
+            weight = z["weight"].astype(np.float32)
+            self.assertEqual(weight.ndim, 1)
+            self.assertEqual(weight.shape[0], src_xy.shape[0])
+            self.assertTrue(np.all(np.isfinite(weight)))
+            self.assertTrue(np.all(weight >= 0.0))
+            self.assertTrue(np.all(weight <= 1.0))
+            # FB-weight should provide non-trivial confidence distribution.
+            self.assertFalse(np.allclose(weight, np.ones_like(weight)))
 
             viz_images = list(viz_dir.glob("*.jpg"))
             self.assertGreaterEqual(len(viz_images), 1)
