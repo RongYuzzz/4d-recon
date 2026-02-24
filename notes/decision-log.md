@@ -61,6 +61,12 @@
 - `scripts/run_mvp_repro.sh` 统一为上述默认值；当 `data/selfcap_bar_8cam60f/triangulation` 不存在且 tar/script/venv 就绪时自动执行 adapter（`--dry-run` 仅打印命令）。
 - `prepare_selfcap_for_freetime.py` 路线降级为 Legacy/Alternative，仅用于特定场景兼容。
 
+### Docs/Artifacts 收敛（防丢）
+- 执行总计划已收敛到仓库内：`docs/execution/2026-02-12-4d-reconstruction-execution.md`
+  - 兼容：`/root/2026-02-12-4d-reconstruction-execution.md` 保留为指向仓库文件的 symlink
+- 历史 evidence pack tarball 已从 worktree 复制到：`artifacts/report_packs/`（tarball 本体不进 git；校验和入库）
+- 汇报材料文本快照（metrics/ablation/failure_cases）已提取到：`docs/report_pack/`
+
 ### Data - SelfCap 路线验证完成
 - 已确认 HF 数据集 `zju3dv/SelfCap-Dataset` 的 `bar-release.tar.gz` 可用，本地缓存位于：
   - `data/raw/selfcap/bar-release.tar.gz`
