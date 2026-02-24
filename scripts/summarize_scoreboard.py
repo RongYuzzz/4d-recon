@@ -186,6 +186,43 @@ def main() -> int:
         )
 
     lines.append("")
+    lines.append("## 风险提示")
+    risk_lines: list[str] = []
+    control = selected.get("control_weak_nocue_600")
+    ours_weak = selected.get("ours_weak_600")
+    if control and ours_weak:
+        control_tlpips = _to_float(control.get("tlpips", ""))
+        ours_tlpips = _to_float(ours_weak.get("tlpips", ""))
+        control_lpips = _to_float(control.get("lpips", ""))
+        ours_lpips = _to_float(ours_weak.get("lpips", ""))
+        control_psnr = _to_float(control.get("psnr", ""))
+        ours_psnr = _to_float(ours_weak.get("psnr", ""))
+        control_ssim = _to_float(control.get("ssim", ""))
+        ours_ssim = _to_float(ours_weak.get("ssim", ""))
+
+        # Risk should trigger when control performs better than ours_weak.
+        if control_tlpips is not None and ours_tlpips is not None and control_tlpips < ours_tlpips:
+            risk_lines.append(
+                "- <span style='color:red'>`control_weak_nocue_600` 的 tLPIPS 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+            )
+        elif control_lpips is not None and ours_lpips is not None and control_lpips < ours_lpips:
+            risk_lines.append(
+                "- <span style='color:red'>`control_weak_nocue_600` 的 LPIPS 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+            )
+        elif control_psnr is not None and ours_psnr is not None and control_psnr > ours_psnr:
+            risk_lines.append(
+                "- <span style='color:red'>`control_weak_nocue_600` 的 PSNR 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+            )
+        elif control_ssim is not None and ours_ssim is not None and control_ssim > ours_ssim:
+            risk_lines.append(
+                "- <span style='color:red'>`control_weak_nocue_600` 的 SSIM 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+            )
+    if risk_lines:
+        lines.extend(risk_lines)
+    else:
+        lines.append("- 未发现 `control_weak_nocue_600` 优于 `ours_weak_600` 的风险信号。")
+
+    lines.append("")
     lines.append("## 结论要点（占位）")
     lines.append("- 结论要点 1：TODO")
     lines.append("- 结论要点 2：TODO")

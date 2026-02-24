@@ -50,8 +50,8 @@ def _write_metrics_csv(path: Path) -> None:
             "step": "599",
             "psnr": "11.0",
             "ssim": "0.60",
-            "lpips": "0.25",
-            "tlpips": "0.018",
+            "lpips": "0.41",
+            "tlpips": "0.03",
             "num_gs": "101",
             "notes": "",
         },
@@ -63,8 +63,8 @@ def _write_metrics_csv(path: Path) -> None:
             "step": "599",
             "psnr": "9.0",
             "ssim": "0.40",
-            "lpips": "0.35",
-            "tlpips": "",
+            "lpips": "0.39",
+            "tlpips": "0.02",
             "num_gs": "102",
             "notes": "",
         },
@@ -217,10 +217,14 @@ def run_test() -> None:
             raise AssertionError("smoke row should be filtered out")
         if "ΔPSNR" not in md or "ΔSSIM" not in md or "ΔLPIPS" not in md or "ΔtLPIPS" not in md:
             raise AssertionError("missing delta columns")
-        if "| ours_weak_600 | 11.0000 | 0.6000 | 0.2500 | 0.0180 | +1.0000 | +0.1000 | -0.0500 | -0.0020 |" not in md:
+        if "| ours_weak_600 | 11.0000 | 0.6000 | 0.4100 | 0.0300 | +1.0000 | +0.1000 | +0.1100 | +0.0100 |" not in md:
             raise AssertionError("unexpected delta row for ours_weak_600")
-        if "| control_weak_nocue_600 | 9.0000 | 0.4000 | 0.3500 | - | -1.0000 | -0.1000 | +0.0500 | - |" not in md:
-            raise AssertionError("empty tlpips should be rendered as '-'")
+        if "| control_weak_nocue_600 | 9.0000 | 0.4000 | 0.3900 | 0.0200 | -1.0000 | -0.1000 | +0.0900 | +0.0000 |" not in md:
+            raise AssertionError("unexpected row for control_weak_nocue_600")
+        if "## 风险提示" not in md:
+            raise AssertionError("missing risk section")
+        if "control_weak_nocue_600" not in md or "ours_weak_600" not in md:
+            raise AssertionError("risk section should mention control vs ours_weak")
         if "结论要点（占位）" not in md:
             raise AssertionError("missing takeaway placeholders")
 
