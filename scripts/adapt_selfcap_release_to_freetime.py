@@ -326,6 +326,23 @@ def main() -> None:
     ap.add_argument("--max_points", type=int, default=200000)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument(
+        "--no_images",
+        action="store_true",
+        help="Skip video decoding and only export triangulation + sparse outputs",
+    )
+    ap.add_argument(
+        "--image_width",
+        type=int,
+        default=0,
+        help="Required with --no_images",
+    )
+    ap.add_argument(
+        "--image_height",
+        type=int,
+        default=0,
+        help="Required with --no_images",
+    )
+    ap.add_argument(
         "--overwrite",
         action="store_true",
         help="Allow cleaning existing images/sparse/triangulation under output_dir",
@@ -342,6 +359,8 @@ def main() -> None:
         raise ValueError("--image_downscale must be >= 1")
     if not tar_path.exists():
         raise FileNotFoundError(f"Tarball not found: {tar_path}")
+    if args.no_images and (args.image_width <= 0 or args.image_height <= 0):
+        raise ValueError("--no_images requires --image_width and --image_height > 0")
 
     camera_ids = [c.strip() for c in args.camera_ids.split(",") if c.strip()]
     if not camera_ids:
@@ -370,12 +389,17 @@ def main() -> None:
         extrinsics = parse_opencv_yml_mats(_read_tar_text(tf, "bar-release/optimized/extri.yml"))
 
         for cam in camera_ids:
+            cam_image_dir = images_dir / cam
+            cam_image_dir.mkdir(parents=True, exist_ok=True)
+            if args.no_images:
+                continue
+
             video_member = f"bar-release/videos/{cam}.mp4"
             tmp_video = _extract_tar_member_to_tempfile(tf, video_member, suffix=f"_{cam}.mp4")
             try:
                 w, h = extract_video_frames(
                     video_path=tmp_video,
-                    out_dir=images_dir / cam,
+                    out_dir=cam_image_dir,
                     frame_start=args.frame_start,
                     num_frames=args.num_frames,
                     downscale=args.image_downscale,
@@ -410,6 +434,9 @@ def main() -> None:
 
     if first_frame_xyz is None or first_frame_rgb is None:
         raise ValueError("Selected frame range has no valid points for sparse/0 points3D")
+    if args.no_images:
+        image_width = args.image_width
+        image_height = args.image_height
     if image_width is None or image_height is None:
         raise ValueError("No video frames extracted")
 
