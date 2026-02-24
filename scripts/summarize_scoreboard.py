@@ -74,7 +74,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out_md", default="outputs/report_pack/scoreboard.md")
     parser.add_argument("--protocol_id", default="")
     parser.add_argument("--select_contains", default="selfcap_bar_8cam60f")
-    parser.add_argument("--select_prefix", default="outputs/protocol_v1/selfcap_bar_8cam60f/")
+    # Keep default broad enough to include both canonical and /gate1/ symlink paths.
+    parser.add_argument("--select_prefix", default="outputs/protocol_v1/")
     parser.add_argument("--step", type=int, default=599)
     parser.add_argument("--stage", default="test")
     return parser.parse_args()
