@@ -35,7 +35,7 @@ def run_test() -> None:
     with tempfile.TemporaryDirectory(prefix="cue_mining_contract_") as tmp:
         root = Path(tmp)
         cams = ["02", "03"]
-        frames = 3
+        frames = 35
         data_dir = _make_tiny_dataset(root, cams=cams, frames=frames)
         out_dir = root / "cue_out"
 
@@ -49,7 +49,7 @@ def run_test() -> None:
             "--frame_start",
             "0",
             "--num_frames",
-            "3",
+            str(frames),
             "--mask_downscale",
             "4",
             "--backend",
@@ -96,9 +96,15 @@ def run_test() -> None:
         overlay = out_dir / "viz" / "overlay_cam02_frame000000.jpg"
         grid = out_dir / "viz" / "grid_frame000000.jpg"
         if not overlay.exists():
-            raise AssertionError(f"missing overlay: {overlay}")
+            raise AssertionError(f"missing legacy overlay: {overlay}")
         if not grid.exists():
             raise AssertionError(f"missing grid: {grid}")
+
+        for cam in sorted(cams):
+            for frame_idx in (0, 30):
+                p = out_dir / "viz" / f"overlay_cam{cam}_frame{frame_idx:06d}.jpg"
+                if not p.exists():
+                    raise AssertionError(f"missing per-cam overlay: {p}")
 
 
 if __name__ == "__main__":

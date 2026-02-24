@@ -51,6 +51,15 @@
 
 命名固定，便于汇报脚本和文档直接引用。
 
+并补充每个相机的固定命名 overlay（用于坐标系/值域快速 sanity）：
+
+- `overlay_cam<cam>_frame000000.jpg`
+- `overlay_cam<cam>_frame000030.jpg`（当 `num_frames > 30` 时输出）
+
+说明：
+- `overlay_cam02_frame000000.jpg` 作为历史兼容 alias 继续保留；
+- 当相机不包含 `02` 时，alias 会复用首个相机在 `frame000000` 的 overlay。
+
 ### 3.3 质量诊断 `quality.json`（必须）
 
 必含 keys（MVP）：

@@ -408,7 +408,7 @@ def main() -> None:
     viz_dir.mkdir(parents=True, exist_ok=True)
 
     if args.backend == "vggt":
-        masks, frame_cache = _run_vggt_backend_impl(
+        masks, _ = _run_vggt_backend_impl(
             images_dir=images_dir,
             camera_names=camera_names,
             frame_start=args.frame_start,
@@ -434,12 +434,8 @@ def main() -> None:
         h, w = example.shape[:2]
         hm, wm = max(1, h // args.mask_downscale), max(1, w // args.mask_downscale)
         masks = np.zeros((args.num_frames, len(camera_names), hm, wm), dtype=np.uint8)
-        frame_cache = {
-            name: [_read_rgb(_index_camera_frames(images_dir / name)[args.frame_start])]
-            for name in camera_names
-        }
     elif args.backend == "diff":
-        masks, frame_cache = _run_diff_backend(
+        masks, _ = _run_diff_backend(
             images_dir=images_dir,
             camera_names=camera_names,
             frame_start=args.frame_start,
@@ -472,18 +468,39 @@ def main() -> None:
     quality_path = out_dir / "quality.json"
     quality_path.write_text(json.dumps(quality, indent=2) + "\n", encoding="utf-8")
 
-    # Fixed viz names for report reuse.
+    # Keep fixed viz names for report reuse and add per-cam overlays for quick sanity checks.
+    frame_maps = {cam_name: _index_camera_frames(images_dir / cam_name) for cam_name in camera_names}
+    overlay_local_indices = [0]
+    if args.num_frames > 30:
+        overlay_local_indices.append(30)
+
+    for cam_i, cam_name in enumerate(camera_names):
+        for local_t in overlay_local_indices:
+            frame_idx = args.frame_start + local_t
+            frame_path = frame_maps[cam_name].get(frame_idx)
+            if frame_path is None:
+                _fail(f"camera '{cam_name}' missing frame {frame_idx} for overlay output")
+            rgb = _read_rgb(frame_path)
+            m_big = _upsample_mask(masks[local_t, cam_i], rgb.shape[:2])
+            overlay = _build_overlay(rgb, m_big)
+            out_name = f"overlay_cam{cam_name}_frame{local_t:06d}.jpg"
+            Image.fromarray(overlay).save(viz_dir / out_name, quality=95)
+
+    # Backward-compatible alias for existing reports.
     overlay_cam = "02" if "02" in camera_names else camera_names[0]
-    overlay_idx = camera_names.index(overlay_cam)
-    first_rgb = frame_cache[overlay_cam][0]
-    mask_big = _upsample_mask(masks[0, overlay_idx], first_rgb.shape[:2])
-    overlay = _build_overlay(first_rgb, mask_big)
-    Image.fromarray(overlay).save(viz_dir / "overlay_cam02_frame000000.jpg", quality=95)
+    legacy_src = viz_dir / f"overlay_cam{overlay_cam}_frame000000.jpg"
+    legacy_dst = viz_dir / "overlay_cam02_frame000000.jpg"
+    if not legacy_src.exists():
+        _fail(f"legacy overlay source missing: {legacy_src}")
+    if legacy_src != legacy_dst:
+        legacy_dst.write_bytes(legacy_src.read_bytes())
 
     grid_imgs = []
-    for cam_name in camera_names:
-        cam_i = camera_names.index(cam_name)
-        rgb = frame_cache[cam_name][0]
+    for cam_i, cam_name in enumerate(camera_names):
+        frame_path = frame_maps[cam_name].get(args.frame_start)
+        if frame_path is None:
+            _fail(f"camera '{cam_name}' missing frame {args.frame_start} for grid output")
+        rgb = _read_rgb(frame_path)
         m_big = _upsample_mask(masks[0, cam_i], rgb.shape[:2])
         grid_imgs.append(_build_overlay(rgb, m_big))
     _save_grid(grid_imgs, viz_dir / "grid_frame000000.jpg", max_cols=4)
