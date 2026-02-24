@@ -185,3 +185,45 @@ python3 scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/re
 
 验收：
 - C 可直接把该文档与 seg2 的 metrics 行纳入后续 evidence pack。
+
+---
+
+## Task A29: 速度统计页（答辩防守证据：反驳 “zero velocity 死路” 类攻击）
+
+动机：
+- 外部评审要求补齐两页“可展示证据”：`||v||` 分布统计 + cue 对齐 sanity。
+- cue 对齐已在 A24 输出更多 overlay；这里补齐 `||v||` 分布统计页，避免口头争论。
+
+**Files:**
+- Create: `scripts/export_velocity_stats.py`
+- Create: `scripts/tests/test_export_velocity_stats.py`
+- Create: `notes/velocity_stats_selfcap_bar_8cam60f.md`
+
+**Step 1: 从 init NPZ 导出 step0 速度统计**
+- 输入：
+  - `outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600/keyframes_60frames_step5.npz`
+- 输出（写入 md）：
+  - `||v||` 的 min/mean/p50/p90/p99/max
+  - `ratio(||v|| < eps)`（eps 固定，比如 `1e-4`）
+  - `times/durations` 的 min/mean/max（证明时间归一化与 duration 初始化口径）
+
+**Step 2: 从 ckpt 导出 step599（end）速度统计**
+- 输入：
+  - `outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600/ckpts/ckpt_599.pt`
+- 输出（写入 md）：
+  - 与 step0 同一套统计口径（便于对比）
+
+**Step 3（可选）: 导出 step100 统计（如果评审强要求 0/100/600 三点）**
+- 方式 A（推荐，最省改动）：跑一个 “诊断短跑” baseline：
+  - `MAX_STEPS=101`，并让 save/eval 对齐到最后一步（保证出 ckpt 与 stats）
+  - 结果目录：`outputs/diagnostics/selfcap_bar_8cam60f/baseline_101`
+- 方式 B：在训练时开 `T0_DEBUG_INTERVAL=100`，从日志抓取 step100 的 `||v||` 统计并固化到 md。
+
+**Step 4: 单测**
+- 用极小的 synthetic NPZ/CKPT fixture（或 mock）验证：
+  - 脚本 CLI 能跑通
+  - 输出 md 至少包含必需字段（min/mean/p50/p90/p99/max、ratio<eps）
+
+验收：
+- `notes/velocity_stats_selfcap_bar_8cam60f.md` 可直接被 C 纳入 evidence pack；
+- 该页至少包含 step0 与 step599 的对比（step100 作为可选增强）。
