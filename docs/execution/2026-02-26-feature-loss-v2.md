@@ -84,7 +84,23 @@
 - baseline（已有，可不重跑）
 - `feature_loss_v2`（200-step）
 - `feature_loss_v2_gated`（200-step）
+ - **硬要求：M1 质量判定必须与 `baseline_smoke200` 同 step 对齐比较，禁止拿 smoke200 直接对比 `baseline_600`。**
 4. 吞吐对比落盘（证明 ≤2×）。
+
+M1 最短可比跑法（同协议、同 step=200）：
+```bash
+# 1) baseline smoke200（作为 M1 对照真值）
+MAX_STEPS=200 RESULT_TAG=baseline_smoke200 \
+  bash scripts/run_train_baseline_selfcap.sh
+
+# 2) feature-loss v2 smoke200
+MAX_STEPS=200 RESULT_TAG=feature_loss_v2_smoke200 \
+  bash scripts/run_train_feature_loss_v2_selfcap.sh
+
+# 3) feature-loss v2 gated smoke200
+MAX_STEPS=200 RESULT_TAG=feature_loss_v2_gated_smoke200 \
+  bash scripts/run_train_feature_loss_v2_gated_selfcap.sh
+```
 
 止损条件（M1 就要敢止损）：
 - 200-step 出现“明显压死画质”的退化（类似 v1 PSNR 掉到 16 的级别）。
@@ -145,4 +161,3 @@
 - `scripts/check_vggt_preprocess_consistency.py`
 4. 吞吐落盘：
 - `stats/*` 或 `throughput.json`
-
