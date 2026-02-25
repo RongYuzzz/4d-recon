@@ -200,6 +200,10 @@ def run_test() -> None:
             raise RuntimeError(f"summarize_scoreboard failed:\n{proc.stdout}\n{proc.stderr}")
         if not out_md.exists():
             raise AssertionError("scoreboard.md missing")
+        if proc.stdout.strip():
+            raise AssertionError(f"stdout should stay empty to avoid redirect corruption, got: {proc.stdout.strip()}")
+        if "wrote " not in proc.stderr:
+            raise AssertionError("status line should be written to stderr")
 
         md = out_md.read_text(encoding="utf-8")
         for must in (

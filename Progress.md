@@ -5,7 +5,7 @@
 
 ## 0. 当前状态（一句话）
 
-已完成 **协议 v1 冻结 + A/B 双人接管**，并刷新到 **midterm snapshot v12**；当前结论是 **weak 主线仍有风险（control 优于 ours_weak）**、**strong v3 已止损冻结**、**VGGT cue 仅到 probe 且不建议开启 protocol_v2**。
+已完成 **协议 v1 冻结 + A/B 双人接管**，并刷新到 **midterm snapshot v13**；当前结论是 **weak 主线仍有风险（control 优于 ours_weak）**、**strong v3 已止损冻结**、**VGGT cue 仅到 probe 且不建议开启 protocol_v2**。
 
 ## 1. 与原执行计划的关键差异（已记录且可辩护）
 
@@ -43,14 +43,14 @@
 
 ## 4. 当前结果摘要（Protocol v1，test@step599）
 
-来源：`docs/report_pack/2026-02-25-v12/metrics.csv`
+来源：`docs/report_pack/2026-02-25-v13/metrics.csv`
 
 | 运行 | PSNR | SSIM | LPIPS | tLPIPS | 备注 |
 |---|---:|---:|---:|---:|---|
 | baseline_600 | 18.9496 | 0.6653 | 0.4048 | 0.0230 | canonical baseline |
 | ours_weak_600 | 19.0194 | 0.6661 | 0.4037 | 0.0231 | diff cue（当前默认） |
 | control_weak_nocue_600 | 19.1099 | 0.6674 | 0.4033 | 0.0236 | control 目前最好（提示 cue 仍需改进） |
-| ours_strong_v3_gate1_detach0_predpred_600 | 18.9894 | 0.6648 | 0.4060 | 0.0228 | strong v3：tLPIPS 有小幅改善但 LPIPS/PSNR 退化，已 stoploss |
+| ours_strong_v3_gate1_detach0_predpred_600 | 18.9491 | 0.6652 | 0.4072 | 0.0228 | strong v3：tLPIPS 有小幅改善但 LPIPS/PSNR 退化，已 stoploss |
 | ours_weak_vggt_w0.3_end200_600 | 18.9808 | 0.6651 | 0.4047 | 0.0245 | VGGT probe：无稳定收益，不建议 protocol_v2 |
 
 ## 5. 对照执行计划：Task 1–11 完成情况

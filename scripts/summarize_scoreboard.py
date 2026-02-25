@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -231,7 +232,7 @@ def main() -> int:
 
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text("\n".join(lines), encoding="utf-8")
-    print(f"wrote {out_md} ({len(selected)} runs)")
+    print(f"wrote {out_md} ({len(selected)} runs)", file=sys.stderr)
     return 0
 
 
