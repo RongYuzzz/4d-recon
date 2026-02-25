@@ -5,7 +5,7 @@
 
 ## 0. 当前状态（一句话）
 
-已完成 **协议 v1 冻结 + A/B 双人接管**，并刷新到 **midterm snapshot v13**；当前结论是 **weak 主线仍有风险（control 优于 ours_weak）**、**strong v3 已止损冻结**、**VGGT cue 仅到 probe 且不建议开启 protocol_v2**。
+已完成 **协议 v1 冻结 + A/B 双人接管**；B 已将 **VGGT feature-loss v2**（含 `token_proj` 对齐修复与更保守默认）合入 `main`；A 已在旧提交 `2948fa0` 上完成 v2 **M1/M2 复跑闭环**（M1 PASS、M2 FAIL 并 stoploss，结论仅作 pre-fix 失败证据），当前待在 `origin/main`（>=`d1b95b2`/`a859078`）上决定是否重跑以形成最终结论。
 
 ## 1. 与原执行计划的关键差异（已记录且可辩护）
 
@@ -88,3 +88,26 @@
 - `02-26+` 唯一主线：VGGT **feature metric loss**（离线 GT cache + 训练时低频/低分辨率/patch）。
 - Plan‑B（触发式救火开关，不并行）：triangulation→粗 3D velocity 初始化，48h timebox。
 - 强制新增两页诊断证据：`||v||` 分布统计 + cue 对齐 overlay（用于防守“zero velocity 死路”等攻击点）。
+
+## 8. 2026-02-25 Feature-Loss v2 复跑闭环（Owner A，pre-fix 证据）
+
+说明：
+- 该次 v2 full600 运行发生在 `2948fa0`，**早于** `d1b95b2`（`token_proj` resize 对齐修复）与 `a859078`（更保守 runner 默认值 + baseline_smoke200 口径修订）。
+- 因此本节结论仅作为 **pre-fix 失败证据**，不可直接作为 v2 的最终 Go/No-Go 判决（需在新 `main` 上复核）。
+
+Gate M1（200-step，对齐 baseline_smoke200）：
+- baseline_smoke200：PSNR 12.6315 / LPIPS 0.63023 / tLPIPS 0.08774
+- v2_smoke200：PSNR 12.5438 / LPIPS 0.62999 / tLPIPS 0.08326
+- v2_gated_smoke200：PSNR 12.5357 / LPIPS 0.63067 / tLPIPS 0.08337
+- gated 生效证据见：`notes/v2_m1_results_owner_a.md`（`has_gate_framediff=True`，无 v1 fallback）
+
+Gate M2（full600，两次上限；按成功线止损）：
+- v2_600：PSNR 15.9437 / LPIPS 0.4996 / tLPIPS 0.0462
+- v2_gated_600：PSNR 15.1714 / LPIPS 0.5140 / tLPIPS 0.0507
+- 相对 baseline_600 出现显著退化，按 `docs/execution/2026-02-26-feature-loss-v2.md` 触发 stoploss。
+
+文本快照与运行记录：
+- `docs/report_pack/2026-02-25-v14/`
+- `notes/v2_m1_preflight_owner_a.md`
+- `notes/v2_m1_results_owner_a.md`
+- `notes/v2_m2_results_owner_a.md`
