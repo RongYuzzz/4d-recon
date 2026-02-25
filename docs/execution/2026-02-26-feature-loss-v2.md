@@ -90,7 +90,7 @@
 M1 最短可比跑法（同协议、同 step=200）：
 ```bash
 # 1) baseline smoke200（作为 M1 对照真值）
-MAX_STEPS=200 RESULT_TAG=baseline_smoke200 \
+MAX_STEPS=200 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/baseline_smoke200 \
   bash scripts/run_train_baseline_selfcap.sh
 
 # 2) feature-loss v2 smoke200
