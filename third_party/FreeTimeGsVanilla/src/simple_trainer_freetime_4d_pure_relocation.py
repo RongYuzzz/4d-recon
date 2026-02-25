@@ -461,14 +461,20 @@ class Config:
     lambda_vggt_feat: float = 0.0
     """Weight for VGGT feature metric loss. 0.0 means disabled (baseline behavior)."""
 
+    vggt_feat_loss_type: Literal["l1", "cosine"] = "l1"
+    """Feature loss type. v1 uses l1; v2 typically uses cosine."""
+
     vggt_feat_start_step: int = 0
     """Start applying feature metric loss from this step (inclusive)."""
+
+    vggt_feat_ramp_steps: int = 0
+    """If >0, linearly ramp lambda_vggt_feat over this many steps after start_step."""
 
     vggt_feat_every: int = 4
     """Apply feature metric loss every N steps to reduce overhead."""
 
     vggt_feat_phi_name: str = "depth"
-    """Feature key used in cache/model, usually depth or world_points."""
+    """Feature key used in cache/model, one of depth|world_points|token_proj."""
 
     vggt_feat_patch_k: int = 0
     """If >0, sample K random patches in phi-space for feature loss (0=full map)."""
@@ -480,7 +486,10 @@ class Config:
     """Use confidence weighting when cache/model provides confidence maps."""
 
     vggt_feat_gating: str = "none"
-    """Feature-loss gating mode: none|framediff|cue (v1 only implements none)."""
+    """Feature-loss gating mode: none|framediff|cue."""
+
+    vggt_feat_gating_top_p: float = 0.10
+    """Top-p ratio used by framediff gating (cache gate -> top-p candidate mask)."""
 
     # ==================== Training Phases (Annealing Strategy) ====================
     # NOTE: Per FreeTimeGS paper, we do NOT use warmup/canonical phases that freeze velocity.
@@ -1848,6 +1857,7 @@ class FreeTime4DRunner:
         # Optional VGGT feature-level prior cache/model (default fully disabled)
         self.vggt_feat_cache_phi: Optional[torch.Tensor] = None  # [T,V,C,Hf,Wf], CPU
         self.vggt_feat_cache_conf: Optional[torch.Tensor] = None  # [T,V,C/Hf/Wf], CPU
+        self.vggt_feat_cache_gate_framediff: Optional[torch.Tensor] = None  # [T,V,1,Hf,Wf], CPU
         self.vggt_feat_frame_start: int = 0
         self.vggt_feat_num_frames: int = 0
         self.vggt_feat_input_size: Tuple[int, int] = (518, 518)
@@ -1855,7 +1865,13 @@ class FreeTime4DRunner:
         self.vggt_feat_mode: str = "crop"
         self.vggt_feat_cam_map: Optional[torch.Tensor] = None  # [num_parser_cams] -> V, CPU
         self.vggt_feat_model: Optional[torch.nn.Module] = None
+        self.vggt_feat_phi_is_normalized: bool = False
+        self.vggt_feat_token_layer_idx: int = 0
+        self.vggt_feat_token_proj_dim: int = 0
+        self.vggt_feat_token_proj_seed: int = 0
+        self.vggt_feat_token_proj_w: Optional[torch.Tensor] = None  # [proj_dim, token_dim]
         self._vggt_feat_warned_non_none_gating: bool = False
+        self._vggt_feat_warned_missing_framediff_gate: bool = False
         self._maybe_load_vggt_feat_cache()
 
         # Load checkpoint if provided
@@ -2163,12 +2179,25 @@ class FreeTime4DRunner:
         cfg = self.cfg
         if cfg.lambda_vggt_feat <= 0.0:
             return
+        cfg.vggt_feat_loss_type = str(cfg.vggt_feat_loss_type).strip().lower()
+        if cfg.vggt_feat_loss_type not in ("l1", "cosine"):
+            raise ValueError(
+                "vggt_feat_loss_type must be one of {'l1','cosine'}, "
+                f"got {cfg.vggt_feat_loss_type!r}"
+            )
+        if int(cfg.vggt_feat_ramp_steps) < 0:
+            raise ValueError(f"vggt_feat_ramp_steps must be >=0, got {cfg.vggt_feat_ramp_steps}")
         if int(cfg.vggt_feat_every) <= 0:
             raise ValueError(f"vggt_feat_every must be >=1, got {cfg.vggt_feat_every}")
         if int(cfg.vggt_feat_patch_k) < 0:
             raise ValueError(f"vggt_feat_patch_k must be >=0, got {cfg.vggt_feat_patch_k}")
         if int(cfg.vggt_feat_patch_hw) <= 0:
             raise ValueError(f"vggt_feat_patch_hw must be >0, got {cfg.vggt_feat_patch_hw}")
+        if float(cfg.vggt_feat_gating_top_p) < 0.0 or float(cfg.vggt_feat_gating_top_p) > 1.0:
+            raise ValueError(
+                "vggt_feat_gating_top_p must be in [0,1], "
+                f"got {cfg.vggt_feat_gating_top_p}"
+            )
         cfg.vggt_feat_gating = str(cfg.vggt_feat_gating).strip().lower()
         if cfg.vggt_feat_gating not in ("none", "framediff", "cue"):
             raise ValueError(
@@ -2176,9 +2205,9 @@ class FreeTime4DRunner:
                 f"got {cfg.vggt_feat_gating!r}"
             )
         cfg.vggt_feat_phi_name = str(cfg.vggt_feat_phi_name).strip()
-        if cfg.vggt_feat_phi_name not in ("depth", "world_points"):
+        if cfg.vggt_feat_phi_name not in ("depth", "world_points", "token_proj"):
             raise ValueError(
-                "vggt_feat_phi_name must be one of {'depth','world_points'}, "
+                "vggt_feat_phi_name must be one of {'depth','world_points','token_proj'}, "
                 f"got {cfg.vggt_feat_phi_name!r}"
             )
         if not cfg.vggt_feat_cache_npz:
@@ -2252,6 +2281,41 @@ class FreeTime4DRunner:
                     )
                 conf_t = torch.from_numpy(np.ascontiguousarray(conf_np))
 
+            gate_framediff_t: Optional[torch.Tensor] = None
+            if "gate_framediff" in npz.files:
+                gate_np = npz["gate_framediff"]
+                if gate_np.ndim == 4:
+                    gate_np = gate_np[:, :, None, :, :]
+                if gate_np.ndim != 5:
+                    raise ValueError(f"Expected gate_framediff.ndim in {{4,5}}, got {gate_np.ndim}")
+                if gate_np.shape[0] != t or gate_np.shape[1] != v:
+                    raise ValueError(
+                        "gate_framediff shape mismatch with phi: "
+                        f"gate={gate_np.shape}, phi={phi_np.shape}"
+                    )
+                gate_framediff_t = torch.from_numpy(np.ascontiguousarray(gate_np))
+
+            token_layer_idx = 0
+            token_proj_dim = 0
+            token_proj_seed = 0
+            if cfg.vggt_feat_phi_name == "token_proj":
+                required_token_keys = {"token_layer_idx", "token_proj_dim", "token_proj_seed"}
+                missing_token_keys = sorted(required_token_keys - set(npz.files))
+                if missing_token_keys:
+                    raise ValueError(
+                        "token_proj cache is missing metadata keys: "
+                        + ", ".join(missing_token_keys)
+                    )
+                token_layer_idx = int(np.asarray(npz["token_layer_idx"]).reshape(-1)[0])
+                token_proj_dim = int(np.asarray(npz["token_proj_dim"]).reshape(-1)[0])
+                token_proj_seed = int(np.asarray(npz["token_proj_seed"]).reshape(-1)[0])
+                if token_proj_dim <= 0:
+                    raise ValueError(f"token_proj_dim must be >0, got {token_proj_dim}")
+
+            phi_is_normalized = False
+            if "phi_is_normalized" in npz.files:
+                phi_is_normalized = bool(np.asarray(npz["phi_is_normalized"]).reshape(-1)[0])
+
         parser_camera_names = list(self.parser.camera_names)
         name_to_idx = {name: idx for idx, name in enumerate(camera_names)}
         missing_cams = [name for name in parser_camera_names if name not in name_to_idx]
@@ -2274,12 +2338,18 @@ class FreeTime4DRunner:
 
         self.vggt_feat_cache_phi = torch.from_numpy(np.ascontiguousarray(phi_np))
         self.vggt_feat_cache_conf = conf_t
+        self.vggt_feat_cache_gate_framediff = gate_framediff_t
         self.vggt_feat_frame_start = frame_start
         self.vggt_feat_num_frames = num_frames
         self.vggt_feat_input_size = (int(input_size[0]), int(input_size[1]))
         self.vggt_feat_phi_size = (int(phi_size[0]), int(phi_size[1]))
         self.vggt_feat_mode = cache_mode
         self.vggt_feat_cam_map = torch.from_numpy(cam_map).to(device="cpu", dtype=torch.long)
+        self.vggt_feat_phi_is_normalized = bool(phi_is_normalized)
+        self.vggt_feat_token_layer_idx = int(token_layer_idx)
+        self.vggt_feat_token_proj_dim = int(token_proj_dim)
+        self.vggt_feat_token_proj_seed = int(token_proj_seed)
+        self.vggt_feat_token_proj_w = None
 
         try:
             from vggt.models.vggt import VGGT  # noqa: PLC0415
@@ -2306,22 +2376,31 @@ class FreeTime4DRunner:
             f"path={cfg.vggt_feat_cache_npz}, phi_shape={tuple(self.vggt_feat_cache_phi.shape)}, "
             f"phi_name={cfg.vggt_feat_phi_name}, mode={self.vggt_feat_mode}, "
             f"input_size={self.vggt_feat_input_size}, phi_size={self.vggt_feat_phi_size}, "
-            f"lambda={cfg.lambda_vggt_feat}, start_step={cfg.vggt_feat_start_step}, every={cfg.vggt_feat_every}"
+            f"lambda={cfg.lambda_vggt_feat}, loss_type={cfg.vggt_feat_loss_type}, "
+            f"start_step={cfg.vggt_feat_start_step}, ramp={cfg.vggt_feat_ramp_steps}, "
+            f"every={cfg.vggt_feat_every}, gating={cfg.vggt_feat_gating}, "
+            f"top_p={cfg.vggt_feat_gating_top_p}, has_gate_framediff={self.vggt_feat_cache_gate_framediff is not None}"
         )
+        if cfg.vggt_feat_phi_name == "token_proj":
+            print(
+                "[VGGTFeat] token_proj meta: "
+                f"layer_idx={self.vggt_feat_token_layer_idx}, proj_dim={self.vggt_feat_token_proj_dim}, "
+                f"proj_seed={self.vggt_feat_token_proj_seed}, phi_is_normalized={self.vggt_feat_phi_is_normalized}"
+            )
 
     def _get_vggt_feat_targets(
         self,
         frame_idx: Union[Tensor, np.ndarray, List[int]],
         camera_idx: Union[Tensor, np.ndarray, List[int]],
-    ) -> Tuple[Optional[Tensor], Optional[Tensor]]:
-        """Gather per-batch GT phi/conf from cache, returned on self.device."""
+    ) -> Tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
+        """Gather per-batch GT phi/conf/gate from cache, returned on self.device."""
         if self.vggt_feat_cache_phi is None or self.vggt_feat_cam_map is None:
-            return None, None
+            return None, None, None
 
         frame_idx_t = torch.as_tensor(frame_idx, dtype=torch.long, device="cpu").view(-1)
         camera_idx_t = torch.as_tensor(camera_idx, dtype=torch.long, device="cpu").view(-1)
         if frame_idx_t.numel() == 0:
-            return None, None
+            return None, None, None
         if (camera_idx_t < 0).any() or (camera_idx_t >= len(self.vggt_feat_cam_map)).any():
             raise ValueError(
                 "camera_idx out of range for VGGT cache mapping: "
@@ -2348,7 +2427,123 @@ class FreeTime4DRunner:
             conf_gt = self.vggt_feat_cache_conf[t_rel, view_idx].to(
                 device=self.device, dtype=torch.float32, non_blocking=True
             )
-        return phi_gt, conf_gt
+        gate_framediff: Optional[Tensor] = None
+        if self.vggt_feat_cache_gate_framediff is not None:
+            gate_framediff = self.vggt_feat_cache_gate_framediff[t_rel, view_idx].to(
+                device=self.device, dtype=torch.float32, non_blocking=True
+            )
+        return phi_gt, conf_gt, gate_framediff
+
+    def _get_vggt_token_proj_matrix(self, token_dim: int, dtype: torch.dtype, device: torch.device) -> Tensor:
+        """Get fixed random projection matrix W:[proj_dim,token_dim] for token_proj phi."""
+        proj_dim = int(self.vggt_feat_token_proj_dim)
+        if proj_dim <= 0:
+            raise ValueError(
+                "token_proj is enabled but cache metadata token_proj_dim is invalid: "
+                f"{self.vggt_feat_token_proj_dim}"
+            )
+        w = self.vggt_feat_token_proj_w
+        if w is None or tuple(w.shape) != (proj_dim, token_dim):
+            g = torch.Generator(device="cpu")
+            g.manual_seed(int(self.vggt_feat_token_proj_seed))
+            w = torch.randn((proj_dim, token_dim), generator=g, dtype=torch.float32)
+            w = F.normalize(w, dim=1)
+            w.requires_grad_(False)
+            self.vggt_feat_token_proj_w = w
+        return self.vggt_feat_token_proj_w.to(device=device, dtype=dtype)
+
+    def _vggt_tokens_to_snd(self, tokens: Tensor, num_views: int, key: str) -> Tensor:
+        """Normalize aggregator tokens to [S,N,D] where S=num_views."""
+        x = tokens
+        if not torch.is_tensor(x):
+            raise ValueError(f"VGGT aggregator '{key}' is not a tensor: {type(x)}")
+        while x.dim() >= 4 and x.shape[0] == 1:
+            x = x[0]
+        if x.dim() != 3:
+            raise ValueError(f"Unsupported aggregator '{key}' shape={tuple(x.shape)}")
+        if x.shape[0] == num_views:
+            return x.contiguous()
+        if x.shape[1] == num_views:
+            return x.permute(1, 0, 2).contiguous()
+        raise ValueError(
+            f"Unexpected aggregator '{key}' shape={tuple(x.shape)} for num_views={num_views}"
+        )
+
+    def _compute_vggt_token_proj_phi(self, x_in: Tensor) -> Tensor:
+        """Compute render phi [S,proj_dim,Hf,Wf] via VGGT aggregator patch tokens."""
+        if self.vggt_feat_model is None:
+            raise ValueError("VGGT model is not initialized for token_proj")
+        images_1xS = x_in.unsqueeze(0)  # [1,S,3,H,W]
+        if self.device.startswith("cuda"):
+            with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+                agg_out = self.vggt_feat_model.aggregator(images_1xS)
+        else:
+            agg_out = self.vggt_feat_model.aggregator(images_1xS)
+
+        if not isinstance(agg_out, (tuple, list)) or len(agg_out) < 2:
+            raise ValueError("VGGT aggregator output must be (aggregated_tokens_list, patch_start_idx)")
+        aggregated_tokens_list = agg_out[0]
+        patch_start_idx = int(agg_out[1])
+        if isinstance(aggregated_tokens_list, torch.Tensor):
+            layer_tokens = aggregated_tokens_list
+        else:
+            if not isinstance(aggregated_tokens_list, (tuple, list)) or not aggregated_tokens_list:
+                raise ValueError("VGGT aggregator returned empty aggregated_tokens_list")
+            layer_idx = int(self.vggt_feat_token_layer_idx)
+            if layer_idx < 0:
+                layer_idx += len(aggregated_tokens_list)
+            if layer_idx < 0 or layer_idx >= len(aggregated_tokens_list):
+                raise ValueError(
+                    f"token layer idx out of range: layer_idx={self.vggt_feat_token_layer_idx}, "
+                    f"num_layers={len(aggregated_tokens_list)}"
+                )
+            layer_tokens = aggregated_tokens_list[layer_idx]
+
+        num_views = int(x_in.shape[0])
+        tokens_snd = self._vggt_tokens_to_snd(layer_tokens, num_views=num_views, key="aggregator_tokens")
+        if patch_start_idx < 0 or patch_start_idx >= int(tokens_snd.shape[1]):
+            raise ValueError(
+                f"invalid patch_start_idx={patch_start_idx} for tokens shape={tuple(tokens_snd.shape)}"
+            )
+        patch_tokens = tokens_snd[:, patch_start_idx:, :].contiguous()  # [S,Npatch,Dtoken]
+        hf, wf = int(self.vggt_feat_phi_size[0]), int(self.vggt_feat_phi_size[1])
+        expected_tokens = int(hf * wf)
+        if patch_tokens.shape[1] < expected_tokens:
+            raise ValueError(
+                "token_proj patch token count is smaller than cache phi_size requires: "
+                f"tokens={patch_tokens.shape[1]}, expected={expected_tokens}"
+            )
+        if patch_tokens.shape[1] > expected_tokens:
+            patch_tokens = patch_tokens[:, :expected_tokens, :]
+
+        token_dim = int(patch_tokens.shape[-1])
+        w = self._get_vggt_token_proj_matrix(
+            token_dim=token_dim,
+            dtype=torch.float32,
+            device=patch_tokens.device,
+        )
+        patch_tokens_f = patch_tokens.float()
+        proj_tokens = torch.einsum("pc,snc->snp", w, patch_tokens_f)  # [S,Npatch,proj_dim]
+        proj_dim = int(proj_tokens.shape[-1])
+        phi_render = proj_tokens.reshape(num_views, hf, wf, proj_dim).permute(0, 3, 1, 2).contiguous()
+        return phi_render
+
+    def _top_p_mask(self, score_map: Tensor, top_p: float) -> Tensor:
+        """Create per-sample top-p binary mask in score map space [B,1,H,W]."""
+        if score_map.dim() != 4 or score_map.shape[1] != 1:
+            raise ValueError(f"score_map must be [B,1,H,W], got {tuple(score_map.shape)}")
+        bsz, _, hf, wf = score_map.shape
+        total = int(hf * wf)
+        if top_p <= 0.0:
+            return torch.zeros_like(score_map, dtype=torch.float32)
+        if top_p >= 1.0:
+            return torch.ones_like(score_map, dtype=torch.float32)
+        k = max(1, min(total, int(math.ceil(float(top_p) * float(total)))))
+        flat = score_map.reshape(bsz, total)
+        topk_idx = torch.topk(flat, k=k, dim=1, largest=True, sorted=False).indices
+        mask_flat = torch.zeros_like(flat, dtype=torch.float32)
+        mask_flat.scatter_(1, topk_idx, 1.0)
+        return mask_flat.reshape(bsz, 1, hf, wf)
 
     def _compute_vggt_feature_loss(
         self,
@@ -2360,39 +2555,37 @@ class FreeTime4DRunner:
         if self.vggt_feat_model is None:
             return torch.tensor(0.0, device=self.device), 0
 
-        phi_gt, conf_gt = self._get_vggt_feat_targets(
+        phi_gt, conf_gt, gate_framediff = self._get_vggt_feat_targets(
             frame_idx=data["frame_idx"],
             camera_idx=data["camera_idx"],
         )
         if phi_gt is None:
             return torch.tensor(0.0, device=self.device), 0
 
-        if cfg.vggt_feat_gating != "none" and not self._vggt_feat_warned_non_none_gating:
-            print(
-                f"[VGGTFeat][WARN] gating={cfg.vggt_feat_gating!r} is not implemented in v1. "
-                "Falling back to 'none'."
-            )
-            self._vggt_feat_warned_non_none_gating = True
-
         x_in = self._preprocess_render_for_vggt(colors)
         num_views = int(x_in.shape[0])
 
-        # CRITICAL: do NOT wrap this forward with torch.no_grad().
-        # VGGT weights are frozen, but gradients must flow to render input
-        # so feature loss can backpropagate to gaussians.
-        if self.device.startswith("cuda"):
-            with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-                pred = self.vggt_feat_model(x_in)
+        pred: Optional[Dict[str, Tensor]] = None
+        if cfg.vggt_feat_phi_name == "token_proj":
+            # CRITICAL: no torch.no_grad(); render branch must keep gradient path.
+            phi_render = self._compute_vggt_token_proj_phi(x_in).float()
         else:
-            pred = self.vggt_feat_model(x_in)
+            # CRITICAL: do NOT wrap this forward with torch.no_grad().
+            # VGGT weights are frozen, but gradients must flow to render input
+            # so feature loss can backpropagate to gaussians.
+            if self.device.startswith("cuda"):
+                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    pred = self.vggt_feat_model(x_in)
+            else:
+                pred = self.vggt_feat_model(x_in)
 
-        if cfg.vggt_feat_phi_name not in pred:
-            raise ValueError(
-                f"VGGT output missing key '{cfg.vggt_feat_phi_name}' for feature loss"
-            )
-        phi_render = self._vggt_output_to_vchw(
-            pred[cfg.vggt_feat_phi_name], num_views=num_views, key=cfg.vggt_feat_phi_name
-        ).float()
+            if cfg.vggt_feat_phi_name not in pred:
+                raise ValueError(
+                    f"VGGT output missing key '{cfg.vggt_feat_phi_name}' for feature loss"
+                )
+            phi_render = self._vggt_output_to_vchw(
+                pred[cfg.vggt_feat_phi_name], num_views=num_views, key=cfg.vggt_feat_phi_name
+            ).float()
         if tuple(phi_render.shape[-2:]) != tuple(self.vggt_feat_phi_size):
             phi_render = F.interpolate(
                 phi_render,
@@ -2408,7 +2601,13 @@ class FreeTime4DRunner:
                 align_corners=False,
             )
 
-        diff = (phi_render - phi_gt).abs()  # [B,C,Hf,Wf], v1 uses L1
+        if cfg.vggt_feat_loss_type == "cosine":
+            phi_render_n = F.normalize(phi_render, dim=1, eps=1e-6)
+            phi_gt_n = F.normalize(phi_gt, dim=1, eps=1e-6)
+            loss_map = 1.0 - (phi_render_n * phi_gt_n).sum(dim=1, keepdim=True)  # [B,1,Hf,Wf]
+        else:
+            loss_map = (phi_render - phi_gt).abs().mean(dim=1, keepdim=True)  # [B,1,Hf,Wf]
+
         weight_map: Optional[Tensor] = None
         if cfg.vggt_feat_use_conf and conf_gt is not None:
             conf_use = conf_gt
@@ -2420,7 +2619,7 @@ class FreeTime4DRunner:
                 )
             conf_use = conf_use.clamp(0.0, 1.0)
 
-            if cfg.vggt_feat_phi_name == "depth" and "depth_conf" in pred:
+            if cfg.vggt_feat_phi_name == "depth" and pred is not None and "depth_conf" in pred:
                 conf_render = self._vggt_output_to_vchw(
                     pred["depth_conf"], num_views=num_views, key="depth_conf"
                 ).float()
@@ -2436,10 +2635,38 @@ class FreeTime4DRunner:
                 conf_use = torch.minimum(conf_use, conf_render.clamp(0.0, 1.0))
             weight_map = conf_use
 
+        gating_mode = str(cfg.vggt_feat_gating).strip().lower()
+        if gating_mode == "cue":
+            if not self._vggt_feat_warned_non_none_gating:
+                print("[VGGTFeat][WARN] gating='cue' is not implemented. Falling back to none.")
+                self._vggt_feat_warned_non_none_gating = True
+        elif gating_mode == "framediff":
+            if gate_framediff is None:
+                if not self._vggt_feat_warned_missing_framediff_gate:
+                    print(
+                        "[VGGTFeat][WARN] gating='framediff' requested but gate_framediff "
+                        "is missing in cache. Falling back to none."
+                    )
+                    self._vggt_feat_warned_missing_framediff_gate = True
+            else:
+                gate_use = gate_framediff
+                if gate_use.shape[1] != 1:
+                    gate_use = gate_use.mean(dim=1, keepdim=True)
+                if tuple(gate_use.shape[-2:]) != tuple(self.vggt_feat_phi_size):
+                    gate_use = F.interpolate(
+                        gate_use, size=self.vggt_feat_phi_size, mode="nearest"
+                    )
+                gate_use = gate_use.float()
+                if float(gate_use.max().item()) > 1.0:
+                    gate_use = gate_use / 255.0
+                gate_use = gate_use.clamp(0.0, 1.0)
+                gate_mask = self._top_p_mask(gate_use, float(cfg.vggt_feat_gating_top_p))
+                weight_map = gate_mask if weight_map is None else (weight_map * gate_mask)
+
         patch_k = int(cfg.vggt_feat_patch_k)
         if patch_k > 0:
             patch_hw = max(int(cfg.vggt_feat_patch_hw), 1)
-            bsz, _, hf, wf = diff.shape
+            bsz, _, hf, wf = loss_map.shape
             ph = min(patch_hw, hf)
             pw = min(patch_hw, wf)
             patch_mask = torch.zeros((bsz, 1, hf, wf), device=self.device, dtype=torch.float32)
@@ -2453,15 +2680,12 @@ class FreeTime4DRunner:
             weight_map = patch_mask if weight_map is None else (weight_map * patch_mask)
 
         if weight_map is None:
-            feat_loss = diff.mean()
-            active = int(diff.shape[0] * diff.shape[-2] * diff.shape[-1])
+            feat_loss = loss_map.mean()
+            active = int(loss_map.shape[0] * loss_map.shape[-2] * loss_map.shape[-1])
             return feat_loss, active
 
-        w = weight_map
-        if w.shape[1] == 1 and diff.shape[1] > 1:
-            w = w.expand(-1, diff.shape[1], -1, -1)
-        w_sum = w.sum()
-        feat_loss = (diff * w).sum() / w_sum.clamp(min=1e-6)
+        w_sum = weight_map.sum()
+        feat_loss = (loss_map * weight_map).sum() / w_sum.clamp(min=1e-6)
         active = int((weight_map > 0).sum().item())
         return feat_loss, active
 
@@ -3270,8 +3494,10 @@ class FreeTime4DRunner:
         if cfg.lambda_vggt_feat > 0.0:
             print(
                 f"  [VGGT FEAT] lambda={cfg.lambda_vggt_feat} phi={cfg.vggt_feat_phi_name} "
-                f"start={cfg.vggt_feat_start_step} every={cfg.vggt_feat_every} "
-                f"patch_k={cfg.vggt_feat_patch_k} patch_hw={cfg.vggt_feat_patch_hw}"
+                f"loss_type={cfg.vggt_feat_loss_type} start={cfg.vggt_feat_start_step} "
+                f"ramp={cfg.vggt_feat_ramp_steps} every={cfg.vggt_feat_every} "
+                f"patch_k={cfg.vggt_feat_patch_k} patch_hw={cfg.vggt_feat_patch_hw} "
+                f"gating={cfg.vggt_feat_gating} top_p={cfg.vggt_feat_gating_top_p}"
             )
         print("="*70 + "\n")
 
@@ -3460,6 +3686,7 @@ class FreeTime4DRunner:
             # 6. VGGT Feature Metric Loss (optional, default disabled)
             feat_loss = torch.tensor(0.0, device=device)
             feat_active = 0
+            feat_lambda = float(cfg.lambda_vggt_feat)
             use_feat_loss = (
                 self.vggt_feat_model is not None
                 and cfg.lambda_vggt_feat > 0.0
@@ -3467,6 +3694,11 @@ class FreeTime4DRunner:
                 and (step % max(int(cfg.vggt_feat_every), 1) == 0)
             )
             if use_feat_loss:
+                ramp_steps = int(cfg.vggt_feat_ramp_steps)
+                if ramp_steps > 0:
+                    ramp_ratio = (float(step) - float(cfg.vggt_feat_start_step)) / float(ramp_steps)
+                    ramp_ratio = float(max(0.0, min(1.0, ramp_ratio)))
+                    feat_lambda *= ramp_ratio
                 feat_loss, feat_active = self._compute_vggt_feature_loss(
                     colors=colors,
                     data=data,
@@ -3475,10 +3707,12 @@ class FreeTime4DRunner:
                     print(
                         "[VGGTFeat] "
                         f"phi={cfg.vggt_feat_phi_name} "
+                        f"loss_type={cfg.vggt_feat_loss_type} "
                         f"active={feat_active} "
+                        f"lambda_eff={feat_lambda:.6f} "
                         f"feat_loss={float(feat_loss.item()):.6f}"
                     )
-            loss_feat = cfg.lambda_vggt_feat * feat_loss
+            loss_feat = feat_lambda * feat_loss
 
             # Total loss
             loss = loss_img + loss_ssim + loss_lpips + loss_4d_reg + loss_dur_reg + loss_corr + loss_feat
