@@ -24,6 +24,8 @@ def run_test() -> None:
         "temporal_corr_end_step",
         "temporal_corr_max_pairs",
         "temporal_corr_loss_mode",
+        "temporal_corr_gate_pseudo_mask: bool = False",
+        "temporal_corr_pred_pred_detach_target: bool = False",
         "pred_pred",
         "_maybe_load_temporal_corr",
         "_compute_temporal_corr_loss",
@@ -38,7 +40,11 @@ def run_test() -> None:
     run_script_text = RUN_STRONG_SCRIPT.read_text(encoding="utf-8")
     required_script_tokens = [
         "TEMPORAL_CORR_LOSS_MODE",
+        "TEMPORAL_CORR_GATE_PSEUDO_MASK",
+        "TEMPORAL_CORR_PRED_PRED_DETACH_TARGET",
         "--temporal-corr-loss-mode",
+        "--temporal-corr-gate-pseudo-mask",
+        "--temporal-corr-pred-pred-detach-target",
     ]
     missing_script = [token for token in required_script_tokens if token not in run_script_text]
     if missing_script:

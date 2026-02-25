@@ -448,6 +448,12 @@ class Config:
     temporal_corr_loss_mode: str = "pred_gt"
     """Temporal correspondence target mode: 'pred_gt' (v1) or 'pred_pred' (v2)."""
 
+    temporal_corr_gate_pseudo_mask: bool = False
+    """If True, gate temporal correspondence weights by (1 - pseudo_mask_dynamicness(src_xy))."""
+
+    temporal_corr_pred_pred_detach_target: bool = False
+    """If True and temporal_corr_loss_mode='pred_pred', detach pred target before L1."""
+
     # ==================== VGGT Feature Metric Loss (Optional) ====================
     vggt_feat_cache_npz: str = ""
     """Path to precomputed GT feature cache NPZ (gt_cache.npz). Empty means disabled."""
@@ -1836,6 +1842,7 @@ class FreeTime4DRunner:
         self.temporal_corr_weight: Optional[np.ndarray] = None  # [N], float32
         self.temporal_corr_factor: int = 1  # equals parser.factor when loaded
         self.temporal_corr_max_pairs: int = 0
+        self.temporal_corr_gate_with_pseudo_mask: bool = False
         self._maybe_load_temporal_corr()
 
         # Optional VGGT feature-level prior cache/model (default fully disabled)
@@ -1856,18 +1863,23 @@ class FreeTime4DRunner:
             self.load_checkpoint(cfg.ckpt_path)
 
     def _maybe_load_pseudo_masks(self) -> None:
-        """Load cue-mined pseudo masks if weak fusion is enabled by config."""
+        """Load cue-mined pseudo masks for weak fusion and optional corr gating."""
         cfg = self.cfg
-        if cfg.pseudo_mask_weight <= 0.0 or cfg.pseudo_mask_end_step <= 0:
+        weak_enabled = cfg.pseudo_mask_weight > 0.0 and cfg.pseudo_mask_end_step > 0
+        corr_gate_enabled = bool(cfg.temporal_corr_gate_pseudo_mask)
+        if not weak_enabled and not corr_gate_enabled:
             return
         if not cfg.pseudo_mask_npz:
-            print(
-                "[WeakFusion] pseudo_mask_weight/pseudo_mask_end_step enabled but "
-                "pseudo_mask_npz is empty. Weak fusion disabled."
-            )
+            if weak_enabled:
+                print(
+                    "[WeakFusion] pseudo_mask_weight/pseudo_mask_end_step enabled but "
+                    "pseudo_mask_npz is empty. Weak fusion disabled."
+                )
             return
         if not os.path.exists(cfg.pseudo_mask_npz):
-            raise FileNotFoundError(f"Pseudo mask NPZ not found: {cfg.pseudo_mask_npz}")
+            if weak_enabled:
+                raise FileNotFoundError(f"Pseudo mask NPZ not found: {cfg.pseudo_mask_npz}")
+            return
 
         with np.load(cfg.pseudo_mask_npz, allow_pickle=True) as npz:
             required_keys = {"masks", "camera_names", "frame_start", "num_frames", "mask_downscale"}
@@ -1940,6 +1952,14 @@ class FreeTime4DRunner:
             raise ValueError(
                 "temporal_corr_loss_mode must be one of {'pred_gt','pred_pred'}, "
                 f"got {cfg.temporal_corr_loss_mode!r}"
+            )
+        self.temporal_corr_gate_with_pseudo_mask = bool(
+            cfg.temporal_corr_gate_pseudo_mask and self.pseudo_masks is not None
+        )
+        if cfg.temporal_corr_gate_pseudo_mask and not self.temporal_corr_gate_with_pseudo_mask:
+            print(
+                "[StrongFusion][WARN] temporal_corr_gate_pseudo_mask enabled but pseudo masks "
+                "are unavailable. Temporal corr gate disabled."
             )
         if not cfg.temporal_corr_npz:
             raise ValueError(
@@ -2506,6 +2526,14 @@ class FreeTime4DRunner:
         factor = max(int(self.temporal_corr_factor), 1)
         max_pairs = int(self.temporal_corr_max_pairs)
         denom = max((int(self.cfg.end_frame) - int(self.cfg.start_frame)) - 1, 1)
+        gate_mask_batch: Optional[Tensor] = None
+        if self.temporal_corr_gate_with_pseudo_mask and self.pseudo_masks is not None:
+            gate_mask_batch = self._get_pseudo_mask_batch(
+                frame_idx=frame_idx_t,
+                camera_idx=cam_idx_t,
+                height=height,
+                width=width,
+            )
 
         for b in range(int(cam_idx_t.numel())):
             cam_idx = int(cam_idx_t[b].item())
@@ -2557,6 +2585,8 @@ class FreeTime4DRunner:
                 )
                 colors_dst = torch.clamp(renders_dst[0, ..., :3], 0.0, 1.0).contiguous().view(-1, 3)
                 target = colors_dst.index_select(0, lin1)
+                if self.cfg.temporal_corr_pred_pred_detach_target:
+                    target = target.detach()
             else:
                 # V1: pred_t(src_xy) vs GT_t'(dst_xy)
                 dst_img = self._load_rgb_image_for_corr(cam_idx, int(dst_frame))
@@ -2567,6 +2597,10 @@ class FreeTime4DRunner:
                 target = torch.from_numpy(gt_np).to(device=self.device, dtype=torch.float32)
 
             w = torch.from_numpy(w_np.astype(np.float32, copy=False)).to(device=self.device, dtype=torch.float32)
+            if gate_mask_batch is not None:
+                mask_flat = gate_mask_batch[b, 0].contiguous().view(-1)
+                dyn_src = mask_flat.index_select(0, lin0).clamp(0.0, 1.0)
+                w = w * (1.0 - dyn_src)
             diff = (pred_src - target).abs().mean(dim=-1)  # [N]
             loss_sum = loss_sum + (diff * w).sum()
             weight_sum = weight_sum + w.sum()
