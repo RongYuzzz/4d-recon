@@ -246,6 +246,48 @@ def generate_interpolated_path(
     return points_to_poses(new_points)
 
 
+def _token_proj_project_and_resize(
+    patch_tokens_snd: Tensor,
+    w: Tensor,
+    patch_h0: int,
+    patch_w0: int,
+    hf: int,
+    wf: int,
+) -> Tensor:
+    """Project token patches to phi channels, then resize to cache phi_size."""
+    if patch_tokens_snd.dim() != 3:
+        raise ValueError(f"patch_tokens_snd must be [S,Npatch,D], got {tuple(patch_tokens_snd.shape)}")
+    if w.dim() != 2:
+        raise ValueError(f"w must be [proj_dim,D], got {tuple(w.shape)}")
+    if patch_h0 <= 0 or patch_w0 <= 0 or hf <= 0 or wf <= 0:
+        raise ValueError(
+            f"invalid spatial size: patch_h0={patch_h0}, patch_w0={patch_w0}, hf={hf}, wf={wf}"
+        )
+    if int(w.shape[1]) != int(patch_tokens_snd.shape[2]):
+        raise ValueError(
+            f"projection dim mismatch: w.D={int(w.shape[1])}, token.D={int(patch_tokens_snd.shape[2])}"
+        )
+
+    s = int(patch_tokens_snd.shape[0])
+    patch_tokens_expected = int(patch_h0 * patch_w0)
+    if int(patch_tokens_snd.shape[1]) < patch_tokens_expected:
+        raise ValueError(
+            "patch token count is smaller than expected patch grid: "
+            f"Npatch={int(patch_tokens_snd.shape[1])}, expected={patch_tokens_expected}"
+        )
+    if int(patch_tokens_snd.shape[1]) > patch_tokens_expected:
+        patch_tokens_snd = patch_tokens_snd[:, :patch_tokens_expected, :]
+
+    patch_tokens = patch_tokens_snd.float()
+    proj_w = w.float()
+    proj_tokens = torch.einsum("pd,snd->snp", proj_w, patch_tokens)  # [S,Npatch,proj_dim]
+    proj_dim = int(proj_tokens.shape[-1])
+    phi_0 = proj_tokens.reshape(s, patch_h0, patch_w0, proj_dim).permute(0, 3, 1, 2).contiguous()
+    if patch_h0 == hf and patch_w0 == wf:
+        return phi_0
+    return F.interpolate(phi_0, size=(hf, wf), mode="bilinear", align_corners=False)
+
+
 @dataclass
 class Config:
     """
@@ -2506,15 +2548,17 @@ class FreeTime4DRunner:
                 f"invalid patch_start_idx={patch_start_idx} for tokens shape={tuple(tokens_snd.shape)}"
             )
         patch_tokens = tokens_snd[:, patch_start_idx:, :].contiguous()  # [S,Npatch,Dtoken]
-        hf, wf = int(self.vggt_feat_phi_size[0]), int(self.vggt_feat_phi_size[1])
-        expected_tokens = int(hf * wf)
-        if patch_tokens.shape[1] < expected_tokens:
+        input_h, input_w = int(self.vggt_feat_input_size[0]), int(self.vggt_feat_input_size[1])
+        patch_h0 = max(1, input_h // 14)
+        patch_w0 = max(1, input_w // 14)
+        patch_tokens_expected = int(patch_h0 * patch_w0)
+        if patch_tokens.shape[1] < patch_tokens_expected:
             raise ValueError(
-                "token_proj patch token count is smaller than cache phi_size requires: "
-                f"tokens={patch_tokens.shape[1]}, expected={expected_tokens}"
+                "token_proj patch token count is smaller than input patch grid requires: "
+                f"tokens={patch_tokens.shape[1]}, expected={patch_tokens_expected}, "
+                f"input_size={self.vggt_feat_input_size}"
             )
-        if patch_tokens.shape[1] > expected_tokens:
-            patch_tokens = patch_tokens[:, :expected_tokens, :]
+        hf, wf = int(self.vggt_feat_phi_size[0]), int(self.vggt_feat_phi_size[1])
 
         token_dim = int(patch_tokens.shape[-1])
         w = self._get_vggt_token_proj_matrix(
@@ -2522,10 +2566,14 @@ class FreeTime4DRunner:
             dtype=torch.float32,
             device=patch_tokens.device,
         )
-        patch_tokens_f = patch_tokens.float()
-        proj_tokens = torch.einsum("pc,snc->snp", w, patch_tokens_f)  # [S,Npatch,proj_dim]
-        proj_dim = int(proj_tokens.shape[-1])
-        phi_render = proj_tokens.reshape(num_views, hf, wf, proj_dim).permute(0, 3, 1, 2).contiguous()
+        phi_render = _token_proj_project_and_resize(
+            patch_tokens_snd=patch_tokens,
+            w=w,
+            patch_h0=patch_h0,
+            patch_w0=patch_w0,
+            hf=hf,
+            wf=wf,
+        )
         return phi_render
 
     def _top_p_mask(self, score_map: Tensor, top_p: float) -> Tensor:
