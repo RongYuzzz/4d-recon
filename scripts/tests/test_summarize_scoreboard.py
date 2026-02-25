@@ -232,6 +232,39 @@ def run_test() -> None:
         if "结论要点（占位）" not in md:
             raise AssertionError("missing takeaway placeholders")
 
+    # When metrics path is inside repo, Source should be repo-relative (portable in docs snapshots).
+    with tempfile.TemporaryDirectory(prefix="scoreboard_rel_", dir=REPO_ROOT) as td_rel:
+        root_rel = Path(td_rel)
+        metrics_csv_rel = root_rel / "outputs" / "report_pack" / "metrics.csv"
+        out_md_rel = root_rel / "outputs" / "report_pack" / "scoreboard.md"
+        _write_metrics_csv(metrics_csv_rel)
+
+        metrics_arg_rel = str(metrics_csv_rel.relative_to(REPO_ROOT))
+        out_arg_rel = str(out_md_rel.relative_to(REPO_ROOT))
+        cmd_rel = [
+            sys.executable,
+            str(SCRIPT),
+            "--metrics_csv",
+            metrics_arg_rel,
+            "--out_md",
+            out_arg_rel,
+            "--select_contains",
+            "selfcap_bar_8cam60f",
+            "--select_prefix",
+            "outputs/protocol_v1/",
+            "--step",
+            "599",
+            "--stage",
+            "test",
+        ]
+        proc_rel = subprocess.run(cmd_rel, capture_output=True, text=True, cwd=REPO_ROOT)
+        if proc_rel.returncode != 0:
+            raise RuntimeError(f"summarize_scoreboard relative-path run failed:\n{proc_rel.stdout}\n{proc_rel.stderr}")
+        md_rel = out_md_rel.read_text(encoding="utf-8")
+        expected_source_line = f"- Source: `{metrics_arg_rel}`"
+        if expected_source_line not in md_rel:
+            raise AssertionError(f"expected repo-relative source line: {expected_source_line}")
+
 
 if __name__ == "__main__":
     try:

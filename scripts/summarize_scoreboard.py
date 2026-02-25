@@ -24,6 +24,13 @@ def _resolve_path(path_str: str) -> Path:
     return ROOT / path
 
 
+def _display_path(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def _to_float(value: str) -> float | None:
     text = (value or "").strip()
     if not text:
@@ -152,7 +159,7 @@ def main() -> int:
     lines.append("# Protocol Scoreboard")
     if args.protocol_id:
         lines.append(f"- Protocol: `{args.protocol_id}`")
-    lines.append(f"- Source: `{metrics_csv}`")
+    lines.append(f"- Source: `{_display_path(metrics_csv)}`")
     lines.append(
         f"- Filter: stage=`{args.stage}`, step=`{args.step}`, contains=`{args.select_contains}`, prefix=`{args.select_prefix}`"
     )

@@ -1,5 +1,5 @@
 # Protocol Scoreboard
-- Source: `/root/autodl-tmp/projects/4d-recon/.worktrees/owner-a-20260225-pack-v12/outputs/report_pack/metrics.csv`
+- Source: `outputs/report_pack/metrics.csv`
 - Filter: stage=`test`, step=`599`, contains=`selfcap_bar_8cam60f`, prefix=`outputs/protocol_v1/`
 
 | run | PSNR | SSIM | LPIPS | tLPIPS | ΔPSNR | ΔSSIM | ΔLPIPS | ΔtLPIPS |
