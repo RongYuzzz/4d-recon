@@ -56,6 +56,7 @@ mkdir -p "$RESULT_DIR"
 
 COMBINE_SCRIPT="$REPO_ROOT/third_party/FreeTimeGsVanilla/src/combine_frames_fast_keyframes.py"
 TRAINER_SCRIPT="$REPO_ROOT/third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py"
+THROUGHPUT_SCRIPT="$REPO_ROOT/scripts/write_throughput_json.py"
 NPZ_PATH="$RESULT_DIR/keyframes_${TOTAL_FRAMES}frames_step${KEYFRAME_STEP}.npz"
 
 echo "[Baseline] data_dir:    $DATA_DIR"
@@ -88,5 +89,7 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --render-traj-path "$RENDER_TRAJ_PATH" \
   --global-scale "$GLOBAL_SCALE" \
   $(if [ "$EVAL_ON_TEST" = "1" ]; then echo --eval-on-test; fi)
+
+"$VENV_PYTHON" "$THROUGHPUT_SCRIPT" "$RESULT_DIR"
 
 echo "[Baseline] Done: $RESULT_DIR"

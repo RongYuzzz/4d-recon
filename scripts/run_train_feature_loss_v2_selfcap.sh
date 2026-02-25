@@ -109,6 +109,7 @@ mkdir -p "$VGGT_CACHE_OUT_DIR"
 COMBINE_SCRIPT="$REPO_ROOT/third_party/FreeTimeGsVanilla/src/combine_frames_fast_keyframes.py"
 TRAINER_SCRIPT="$REPO_ROOT/third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py"
 CACHE_SCRIPT="$REPO_ROOT/scripts/precompute_vggt_cache.py"
+THROUGHPUT_SCRIPT="$REPO_ROOT/scripts/write_throughput_json.py"
 NPZ_PATH="$RESULT_DIR/keyframes_${TOTAL_FRAMES}frames_step${KEYFRAME_STEP}.npz"
 
 if [ ! -f "$VGGT_FEAT_CACHE_NPZ" ]; then
@@ -183,48 +184,6 @@ CUDA_VISIBLE_DEVICES="$GPU" VGGT_MODEL_ID="$VGGT_MODEL_ID" VGGT_CACHE_DIR="$VGGT
   "$VGGT_FEAT_USE_CONF_FLAG" \
   $(if [ "$EVAL_ON_TEST" = "1" ]; then echo --eval-on-test; fi)
 
-"$VENV_PYTHON" - "$RESULT_DIR" <<'PY'
-import json
-import re
-import sys
-from pathlib import Path
-
-result_dir = Path(sys.argv[1]).resolve()
-stats_dir = result_dir / "stats"
-stats_files = sorted(stats_dir.glob("train_step*.json"))
-if not stats_files:
-    raise SystemExit(f"[ERROR] no train_step stats found under {stats_dir}")
-
-best_path = None
-best_step = -1
-best_elapsed = 0.0
-for path in stats_files:
-    m = re.match(r"train_step(\d+)\.json$", path.name)
-    if m is None:
-        continue
-    step = int(m.group(1))
-    data = json.loads(path.read_text(encoding="utf-8"))
-    elapsed = float(data.get("ellipse_time", 0.0) or 0.0)
-    if elapsed <= 0:
-        continue
-    if step > best_step:
-        best_path = path
-        best_step = step
-        best_elapsed = elapsed
-
-if best_path is None:
-    raise SystemExit(f"[ERROR] no valid stats with positive ellipse_time under {stats_dir}")
-
-iter_per_sec = float(best_step + 1) / best_elapsed
-throughput = {
-    "source_stats": str(best_path.name),
-    "step": best_step,
-    "elapsed_sec": best_elapsed,
-    "iter_per_sec": iter_per_sec,
-}
-out_path = stats_dir / "throughput.json"
-out_path.write_text(json.dumps(throughput, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-print(f"[FeatureLoss-v2] wrote {out_path}")
-PY
+"$VENV_PYTHON" "$THROUGHPUT_SCRIPT" "$RESULT_DIR"
 
 echo "[FeatureLoss-v2] Done: $RESULT_DIR"
