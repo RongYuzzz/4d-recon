@@ -74,7 +74,7 @@ def _compute_online_phi(
     phi_downscale: int,
 ) -> np.ndarray:
     if backend == "dummy":
-        phi, _conf, _input_size, _phi_size = _run_backend_dummy(
+        phi, _conf, _input_size, _phi_size, _extras = _run_backend_dummy(
             frame_maps=frame_maps,
             camera_names=camera_names,
             frame_indices=frame_indices,
@@ -82,11 +82,17 @@ def _compute_online_phi(
         )
         return phi.astype(np.float32, copy=False)
 
-    phi, _conf, _input_size, _phi_size = _run_backend_vggt(
+    phi, _conf, _input_size, _phi_size, _extras = _run_backend_vggt(
         frame_maps=frame_maps,
         camera_names=camera_names,
         frame_indices=frame_indices,
         phi_name=phi_name,
+        token_layer_idx=23,
+        token_proj_dim=32,
+        token_proj_seed=20260225,
+        token_proj_normalize=True,
+        save_framediff_gate=False,
+        framediff_top_p=0.10,
         vggt_model_id=vggt_model_id,
         vggt_cache_dir=vggt_cache_dir,
         vggt_mode=vggt_mode,
