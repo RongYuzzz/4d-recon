@@ -88,6 +88,8 @@ def run_test() -> None:
             "input_size",
             "phi_size",
         }
+        # Keep contract backward-compatible: only assert required baseline keys.
+        # New cache variants may add optional keys (e.g., conf/gate_framediff/token_*).
         missing = sorted(required_keys - set(obj.files))
         if missing:
             raise AssertionError(f"missing keys in npz: {', '.join(missing)}")
