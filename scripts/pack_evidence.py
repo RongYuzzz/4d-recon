@@ -99,6 +99,7 @@ def collect_files(repo_root: Path) -> list[Path]:
         step_from_file=lambda p: _step_from_name(p.name, TEST_PATTERN),
     )
     files.update(p for p in stats_latest_test if p.is_file())
+    files.update(p for p in outputs.glob("**/stats/throughput.json") if p.is_file())
 
     video_latest = _latest_per_run(
         outputs.glob("**/videos/traj_*.mp4"),

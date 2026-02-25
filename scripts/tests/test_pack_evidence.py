@@ -28,6 +28,10 @@ def run_test() -> None:
         ckpts.mkdir(parents=True, exist_ok=True)
 
         (stats / "val_step0001.json").write_text('{"psnr": 1.0}', encoding="utf-8")
+        (stats / "throughput.json").write_text(
+            '{"source_stats":"train_step0199.json","step":199,"elapsed_sec":100.0,"iter_per_sec":2.0}',
+            encoding="utf-8",
+        )
         (videos / "traj_4d_step1.mp4").write_bytes(b"fake-mp4")
         (ckpts / "ckpt_1.pt").write_bytes(b"fake-ckpt")
 
@@ -59,6 +63,7 @@ def run_test() -> None:
             "README.md",
             "notes/demo-runbook.md",
             "outputs/runA/stats/val_step0001.json",
+            "outputs/runA/stats/throughput.json",
             "outputs/runA/videos/traj_4d_step1.mp4",
             "outputs/correspondences/demo/viz/klt_pair.png",
             "git_rev.txt",
