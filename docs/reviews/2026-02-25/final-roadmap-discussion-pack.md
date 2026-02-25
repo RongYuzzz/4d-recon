@@ -224,6 +224,7 @@
 - feature loss v1 尝试与止损：`notes/feature_loss_v1_attempt.md`
 - anti-cherrypick(seg200_260)：`docs/protocols/protocol_v1_seg200_260.yaml`、`notes/anti_cherrypick_seg200_260.md`
 - 速度统计（防守页）：`notes/velocity_stats_selfcap_bar_8cam60f.md`（如需补图可由脚本导出）
+- 写作参考（支撑 trade-off/Pareto 叙事）：LPIPS（arXiv:1801.03924）、Perceptual Loss（arXiv:1603.08155）
 
 ---
 
