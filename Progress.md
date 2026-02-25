@@ -5,7 +5,7 @@
 
 ## 0. 当前状态（一句话）
 
-已完成 **协议 v1 冻结 + A/B 双人接管**；B 已将 **VGGT feature-loss v2**（含 `token_proj` 对齐修复与更保守默认）合入 `main`；A 已在旧提交 `2948fa0` 上完成 v2 **M1/M2 复跑闭环**（M1 PASS、M2 FAIL 并 stoploss，结论仅作 pre-fix 失败证据），当前待在 `origin/main`（>=`d1b95b2`/`a859078`）上决定是否重跑以形成最终结论。
+已完成 **协议 v1 冻结 + A/B 双人接管**；A 已在最新 `origin/main`（含 `d1b95b2` + `a859078`）完成 **Feature-Loss v2 post-fix 复核**：M1 PASS（含 lambda sweep）后执行 1 次 full600 主判据，结论为 **No-Go（未形成优于 baseline/control 的可辩护趋势）**，并按规则停止第 2 次 gated full600。
 
 ## 1. 与原执行计划的关键差异（已记录且可辩护）
 
@@ -111,3 +111,28 @@ Gate M2（full600，两次上限；按成功线止损）：
 - `notes/v2_m1_preflight_owner_a.md`
 - `notes/v2_m1_results_owner_a.md`
 - `notes/v2_m2_results_owner_a.md`
+
+## 9. 2026-02-25 Feature-Loss v2 Post-Fix 复核（Owner A，最终判定）
+
+执行基线：
+- 分支/工作树：`owner-a-20260226-v2-postfix` / `.worktrees/owner-a-20260226-v2-postfix`
+- HEAD：`e761b18`（包含 `d1b95b2` 与 `a859078`）
+- 协议：`protocol_v1`（数据/帧段/相机/split 不变）
+
+M1（smoke200 + sweep）：
+- baseline：`baseline_smoke200_postfix`
+- 主对照：`feature_loss_v2_smoke200_postfix`、`feature_loss_v2_gated_smoke200_postfix`
+- sweep：`feature_loss_v2_smoke200_postfix_lam0.005`、`feature_loss_v2_smoke200_postfix_lam0.01`
+- 判定：PASS（未出现灾难退化；gated 确认 `has_gate_framediff=True` 且无 fallback）
+
+M2（选择性 full600）：
+- 执行：`feature_loss_v2_postfix_600`（`lambda=0.01`）
+- 结果：`PSNR=18.6752, LPIPS=0.4219, tLPIPS=0.0261`
+- 相对 baseline_600：`ΔPSNR=-0.2744, ΔLPIPS=+0.0172, ΔtLPIPS=+0.0031`
+- 结论：无可辩护正向趋势，**不执行第 2 次 gated full600**，判定 **No-Go**。
+
+证据快照：
+- `docs/report_pack/2026-02-25-v15/`
+- `notes/v2_postfix_preflight_owner_a.md`
+- `notes/v2_postfix_m1_owner_a.md`
+- `notes/v2_postfix_m2_owner_a.md`
