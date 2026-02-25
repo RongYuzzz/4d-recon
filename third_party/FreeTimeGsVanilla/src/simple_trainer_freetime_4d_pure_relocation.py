@@ -448,6 +448,34 @@ class Config:
     temporal_corr_loss_mode: str = "pred_gt"
     """Temporal correspondence target mode: 'pred_gt' (v1) or 'pred_pred' (v2)."""
 
+    # ==================== VGGT Feature Metric Loss (Optional) ====================
+    vggt_feat_cache_npz: str = ""
+    """Path to precomputed GT feature cache NPZ (gt_cache.npz). Empty means disabled."""
+
+    lambda_vggt_feat: float = 0.0
+    """Weight for VGGT feature metric loss. 0.0 means disabled (baseline behavior)."""
+
+    vggt_feat_start_step: int = 0
+    """Start applying feature metric loss from this step (inclusive)."""
+
+    vggt_feat_every: int = 4
+    """Apply feature metric loss every N steps to reduce overhead."""
+
+    vggt_feat_phi_name: str = "depth"
+    """Feature key used in cache/model, usually depth or world_points."""
+
+    vggt_feat_patch_k: int = 0
+    """If >0, sample K random patches in phi-space for feature loss (0=full map)."""
+
+    vggt_feat_patch_hw: int = 32
+    """Patch side length in phi-space when vggt_feat_patch_k > 0."""
+
+    vggt_feat_use_conf: bool = True
+    """Use confidence weighting when cache/model provides confidence maps."""
+
+    vggt_feat_gating: str = "none"
+    """Feature-loss gating mode: none|framediff|cue (v1 only implements none)."""
+
     # ==================== Training Phases (Annealing Strategy) ====================
     # NOTE: Per FreeTimeGS paper, we do NOT use warmup/canonical phases that freeze velocity.
     # Freezing velocity destroys ROMA initialization by causing positions to drift to average.
@@ -1810,6 +1838,19 @@ class FreeTime4DRunner:
         self.temporal_corr_max_pairs: int = 0
         self._maybe_load_temporal_corr()
 
+        # Optional VGGT feature-level prior cache/model (default fully disabled)
+        self.vggt_feat_cache_phi: Optional[torch.Tensor] = None  # [T,V,C,Hf,Wf], CPU
+        self.vggt_feat_cache_conf: Optional[torch.Tensor] = None  # [T,V,C/Hf/Wf], CPU
+        self.vggt_feat_frame_start: int = 0
+        self.vggt_feat_num_frames: int = 0
+        self.vggt_feat_input_size: Tuple[int, int] = (518, 518)
+        self.vggt_feat_phi_size: Tuple[int, int] = (129, 129)
+        self.vggt_feat_mode: str = "crop"
+        self.vggt_feat_cam_map: Optional[torch.Tensor] = None  # [num_parser_cams] -> V, CPU
+        self.vggt_feat_model: Optional[torch.nn.Module] = None
+        self._vggt_feat_warned_non_none_gating: bool = False
+        self._maybe_load_vggt_feat_cache()
+
         # Load checkpoint if provided
         if cfg.ckpt_path is not None:
             self.load_checkpoint(cfg.ckpt_path)
@@ -2015,6 +2056,394 @@ class FreeTime4DRunner:
             f"lambda_corr={cfg.lambda_corr}, end_step={cfg.temporal_corr_end_step}, "
             f"factor={self.temporal_corr_factor}, mode={cfg.temporal_corr_loss_mode}"
         )
+
+    def _vggt_output_to_vchw(self, value: Tensor, num_views: int, key: str) -> Tensor:
+        """Normalize VGGT output tensor shape to [V,C,H,W]."""
+        x = value
+        if not torch.is_tensor(x):
+            raise ValueError(f"VGGT output '{key}' is not a tensor: {type(x)}")
+        while x.dim() >= 5 and x.shape[0] == 1:
+            x = x[0]
+
+        if x.dim() == 3:
+            if x.shape[0] == num_views:
+                x = x[:, None, :, :]
+            elif x.shape[-1] == num_views:
+                x = x.permute(2, 0, 1)[:, None, :, :]
+            else:
+                raise ValueError(
+                    f"Unexpected VGGT '{key}' shape={tuple(x.shape)} for num_views={num_views}"
+                )
+            return x.contiguous()
+
+        if x.dim() == 4:
+            if x.shape[0] == num_views and x.shape[1] <= 16:
+                return x.contiguous()  # [V,C,H,W]
+            if x.shape[0] == num_views and x.shape[-1] <= 16:
+                return x.permute(0, 3, 1, 2).contiguous()  # [V,H,W,C]
+            if x.shape[1] == num_views and x.shape[0] <= 16:
+                return x.permute(1, 0, 2, 3).contiguous()  # [C,V,H,W]
+            if x.shape[2] == num_views and x.shape[-1] <= 16:
+                return x.permute(2, 3, 0, 1).contiguous()  # [H,W,V,C]
+
+        raise ValueError(f"Unsupported VGGT '{key}' output shape={tuple(x.shape)}")
+
+    def _preprocess_render_for_vggt(self, colors: Tensor) -> Tensor:
+        """Preprocess render [B,H,W,3] into VGGT input [B,3,H_in,W_in], no disk/PIL path."""
+        x = colors.permute(0, 3, 1, 2).contiguous()
+        target_h, target_w = int(self.vggt_feat_input_size[0]), int(self.vggt_feat_input_size[1])
+        mode = str(self.vggt_feat_mode).strip().lower()
+        if mode not in ("crop", "pad"):
+            mode = "crop"
+
+        outs: List[Tensor] = []
+        for b in range(int(x.shape[0])):
+            xb = x[b : b + 1]
+            h0, w0 = int(xb.shape[-2]), int(xb.shape[-1])
+            if mode == "pad":
+                if w0 >= h0:
+                    new_w = target_w
+                    new_h = max(14, int(round((h0 * (new_w / max(w0, 1))) / 14.0) * 14))
+                else:
+                    new_h = target_h
+                    new_w = max(14, int(round((w0 * (new_h / max(h0, 1))) / 14.0) * 14))
+            else:
+                new_w = target_w
+                new_h = max(14, int(round((h0 * (new_w / max(w0, 1))) / 14.0) * 14))
+
+            xb = F.interpolate(xb, size=(new_h, new_w), mode="bicubic", align_corners=False)
+
+            if mode == "crop" and new_h > target_h:
+                start_y = (new_h - target_h) // 2
+                xb = xb[:, :, start_y : start_y + target_h, :]
+            elif mode == "pad":
+                h_padding = max(target_h - int(xb.shape[-2]), 0)
+                w_padding = max(target_w - int(xb.shape[-1]), 0)
+                if h_padding > 0 or w_padding > 0:
+                    pad_top = h_padding // 2
+                    pad_bottom = h_padding - pad_top
+                    pad_left = w_padding // 2
+                    pad_right = w_padding - pad_left
+                    xb = F.pad(
+                        xb,
+                        (pad_left, pad_right, pad_top, pad_bottom),
+                        mode="constant",
+                        value=1.0,
+                    )
+
+            # Ensure exact cache-aligned input size for deterministic phi size.
+            if (int(xb.shape[-2]), int(xb.shape[-1])) != (target_h, target_w):
+                xb = F.interpolate(xb, size=(target_h, target_w), mode="bicubic", align_corners=False)
+            outs.append(xb)
+
+        return torch.cat(outs, dim=0).clamp(0.0, 1.0)
+
+    def _maybe_load_vggt_feat_cache(self) -> None:
+        """Load GT VGGT feature cache and frozen VGGT model when feature loss is enabled."""
+        cfg = self.cfg
+        if cfg.lambda_vggt_feat <= 0.0:
+            return
+        if int(cfg.vggt_feat_every) <= 0:
+            raise ValueError(f"vggt_feat_every must be >=1, got {cfg.vggt_feat_every}")
+        if int(cfg.vggt_feat_patch_k) < 0:
+            raise ValueError(f"vggt_feat_patch_k must be >=0, got {cfg.vggt_feat_patch_k}")
+        if int(cfg.vggt_feat_patch_hw) <= 0:
+            raise ValueError(f"vggt_feat_patch_hw must be >0, got {cfg.vggt_feat_patch_hw}")
+        cfg.vggt_feat_gating = str(cfg.vggt_feat_gating).strip().lower()
+        if cfg.vggt_feat_gating not in ("none", "framediff", "cue"):
+            raise ValueError(
+                "vggt_feat_gating must be one of {'none','framediff','cue'}, "
+                f"got {cfg.vggt_feat_gating!r}"
+            )
+        cfg.vggt_feat_phi_name = str(cfg.vggt_feat_phi_name).strip()
+        if cfg.vggt_feat_phi_name not in ("depth", "world_points"):
+            raise ValueError(
+                "vggt_feat_phi_name must be one of {'depth','world_points'}, "
+                f"got {cfg.vggt_feat_phi_name!r}"
+            )
+        if not cfg.vggt_feat_cache_npz:
+            raise ValueError(
+                "VGGT feature loss requested (lambda_vggt_feat>0) but vggt_feat_cache_npz is empty"
+            )
+        if not os.path.exists(cfg.vggt_feat_cache_npz):
+            raise FileNotFoundError(f"VGGT feature cache NPZ not found: {cfg.vggt_feat_cache_npz}")
+
+        with np.load(cfg.vggt_feat_cache_npz, allow_pickle=True) as npz:
+            required = {
+                "phi",
+                "camera_names",
+                "frame_start",
+                "num_frames",
+                "phi_name",
+                "vggt_mode",
+                "input_size",
+                "phi_size",
+            }
+            missing = sorted(required - set(npz.files))
+            if missing:
+                raise ValueError(
+                    f"VGGT cache NPZ missing keys: {', '.join(missing)} ({cfg.vggt_feat_cache_npz})"
+                )
+
+            phi_np = npz["phi"]
+            if phi_np.ndim != 5:
+                raise ValueError(f"Expected phi.ndim==5 [T,V,C,Hf,Wf], got {phi_np.ndim}")
+            t, v, c, hf, wf = [int(x) for x in phi_np.shape]
+            if t <= 0 or v <= 0 or c <= 0 or hf <= 0 or wf <= 0:
+                raise ValueError(f"Invalid phi shape: {phi_np.shape}")
+
+            frame_start = int(npz["frame_start"])
+            num_frames = int(npz["num_frames"])
+            if num_frames != t:
+                raise ValueError(f"VGGT cache num_frames mismatch: meta={num_frames}, phi.T={t}")
+
+            cache_phi_name = str(npz["phi_name"].tolist())
+            if cache_phi_name != cfg.vggt_feat_phi_name:
+                raise ValueError(
+                    "VGGT cache phi_name mismatch: "
+                    f"cache={cache_phi_name!r}, cfg={cfg.vggt_feat_phi_name!r}"
+                )
+
+            cache_mode = str(npz["vggt_mode"].tolist()).strip().lower()
+            if cache_mode not in ("crop", "pad"):
+                raise ValueError(f"Invalid vggt_mode in cache: {cache_mode!r}")
+
+            input_size = np.asarray(npz["input_size"]).astype(np.int64).reshape(-1)
+            phi_size = np.asarray(npz["phi_size"]).astype(np.int64).reshape(-1)
+            if input_size.shape[0] != 2 or phi_size.shape[0] != 2:
+                raise ValueError(
+                    f"input_size/phi_size must be length 2, got {input_size.shape}, {phi_size.shape}"
+                )
+
+            camera_names = [str(x) for x in npz["camera_names"].tolist()]
+            if len(camera_names) != v:
+                raise ValueError(f"camera_names length mismatch: {len(camera_names)} vs V={v}")
+
+            conf_t: Optional[torch.Tensor] = None
+            if "conf" in npz.files:
+                conf_np = npz["conf"]
+                if conf_np.ndim == 4:
+                    conf_np = conf_np[:, :, None, :, :]
+                if conf_np.ndim != 5:
+                    raise ValueError(f"Expected conf.ndim in {{4,5}}, got {conf_np.ndim}")
+                if conf_np.shape[0] != t or conf_np.shape[1] != v:
+                    raise ValueError(
+                        f"conf shape mismatch with phi: conf={conf_np.shape}, phi={phi_np.shape}"
+                    )
+                conf_t = torch.from_numpy(np.ascontiguousarray(conf_np))
+
+        parser_camera_names = list(self.parser.camera_names)
+        name_to_idx = {name: idx for idx, name in enumerate(camera_names)}
+        missing_cams = [name for name in parser_camera_names if name not in name_to_idx]
+        if missing_cams:
+            raise ValueError(
+                "VGGT cache camera_names do not cover parser cameras: "
+                + ", ".join(missing_cams[:8])
+            )
+        cam_map = np.asarray([name_to_idx[name] for name in parser_camera_names], dtype=np.int64)
+
+        train_start = int(cfg.start_frame)
+        train_end = int(cfg.end_frame)
+        cache_start = int(frame_start)
+        cache_end = int(frame_start + num_frames)
+        if train_start < cache_start or train_end > cache_end:
+            raise ValueError(
+                "VGGT cache frame range does not cover training range: "
+                f"train=[{train_start},{train_end}), cache=[{cache_start},{cache_end})"
+            )
+
+        self.vggt_feat_cache_phi = torch.from_numpy(np.ascontiguousarray(phi_np))
+        self.vggt_feat_cache_conf = conf_t
+        self.vggt_feat_frame_start = frame_start
+        self.vggt_feat_num_frames = num_frames
+        self.vggt_feat_input_size = (int(input_size[0]), int(input_size[1]))
+        self.vggt_feat_phi_size = (int(phi_size[0]), int(phi_size[1]))
+        self.vggt_feat_mode = cache_mode
+        self.vggt_feat_cam_map = torch.from_numpy(cam_map).to(device="cpu", dtype=torch.long)
+
+        try:
+            from vggt.models.vggt import VGGT  # noqa: PLC0415
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(
+                "VGGT feature loss requires VGGT package. "
+                "Install with: pip install 'git+https://github.com/facebookresearch/vggt.git'. "
+                f"import error: {exc}"
+            ) from exc
+
+        vggt_model_id = os.environ.get("VGGT_MODEL_ID", "facebook/VGGT-1B")
+        vggt_cache_dir_env = os.environ.get("VGGT_CACHE_DIR", "").strip()
+        vggt_cache_dir = vggt_cache_dir_env or None
+        print(
+            "[VGGTFeat] loading frozen model: "
+            f"id={vggt_model_id}, cache_dir={vggt_cache_dir or '<default>'}, device={self.device}"
+        )
+        self.vggt_feat_model = VGGT.from_pretrained(vggt_model_id, cache_dir=vggt_cache_dir).to(self.device).eval()
+        for p in self.vggt_feat_model.parameters():
+            p.requires_grad_(False)
+
+        print(
+            "[VGGTFeat] cache loaded: "
+            f"path={cfg.vggt_feat_cache_npz}, phi_shape={tuple(self.vggt_feat_cache_phi.shape)}, "
+            f"phi_name={cfg.vggt_feat_phi_name}, mode={self.vggt_feat_mode}, "
+            f"input_size={self.vggt_feat_input_size}, phi_size={self.vggt_feat_phi_size}, "
+            f"lambda={cfg.lambda_vggt_feat}, start_step={cfg.vggt_feat_start_step}, every={cfg.vggt_feat_every}"
+        )
+
+    def _get_vggt_feat_targets(
+        self,
+        frame_idx: Union[Tensor, np.ndarray, List[int]],
+        camera_idx: Union[Tensor, np.ndarray, List[int]],
+    ) -> Tuple[Optional[Tensor], Optional[Tensor]]:
+        """Gather per-batch GT phi/conf from cache, returned on self.device."""
+        if self.vggt_feat_cache_phi is None or self.vggt_feat_cam_map is None:
+            return None, None
+
+        frame_idx_t = torch.as_tensor(frame_idx, dtype=torch.long, device="cpu").view(-1)
+        camera_idx_t = torch.as_tensor(camera_idx, dtype=torch.long, device="cpu").view(-1)
+        if frame_idx_t.numel() == 0:
+            return None, None
+        if (camera_idx_t < 0).any() or (camera_idx_t >= len(self.vggt_feat_cam_map)).any():
+            raise ValueError(
+                "camera_idx out of range for VGGT cache mapping: "
+                f"min={int(camera_idx_t.min())}, max={int(camera_idx_t.max())}, "
+                f"num_cams={len(self.vggt_feat_cam_map)}"
+            )
+
+        t_rel = frame_idx_t - int(self.vggt_feat_frame_start)
+        if (t_rel < 0).any() or (t_rel >= int(self.vggt_feat_num_frames)).any():
+            raise ValueError(
+                "frame_idx out of VGGT cache range: "
+                f"frame[min,max]=({int(frame_idx_t.min())},{int(frame_idx_t.max())}), "
+                f"cache=[{self.vggt_feat_frame_start},{self.vggt_feat_frame_start + self.vggt_feat_num_frames})"
+            )
+        view_idx = self.vggt_feat_cam_map[camera_idx_t]
+        if (view_idx < 0).any():
+            raise ValueError("negative view index detected in VGGT cache camera map")
+
+        phi_gt = self.vggt_feat_cache_phi[t_rel, view_idx].to(
+            device=self.device, dtype=torch.float32, non_blocking=True
+        )  # [B,C,Hf,Wf]
+        conf_gt: Optional[Tensor] = None
+        if self.vggt_feat_cache_conf is not None:
+            conf_gt = self.vggt_feat_cache_conf[t_rel, view_idx].to(
+                device=self.device, dtype=torch.float32, non_blocking=True
+            )
+        return phi_gt, conf_gt
+
+    def _compute_vggt_feature_loss(
+        self,
+        colors: Tensor,  # [B,H,W,3] in [0,1]
+        data: Dict[str, Any],
+    ) -> Tuple[Tensor, int]:
+        """Compute feature metric loss between render phi and cached GT phi."""
+        cfg = self.cfg
+        if self.vggt_feat_model is None:
+            return torch.tensor(0.0, device=self.device), 0
+
+        phi_gt, conf_gt = self._get_vggt_feat_targets(
+            frame_idx=data["frame_idx"],
+            camera_idx=data["camera_idx"],
+        )
+        if phi_gt is None:
+            return torch.tensor(0.0, device=self.device), 0
+
+        if cfg.vggt_feat_gating != "none" and not self._vggt_feat_warned_non_none_gating:
+            print(
+                f"[VGGTFeat][WARN] gating={cfg.vggt_feat_gating!r} is not implemented in v1. "
+                "Falling back to 'none'."
+            )
+            self._vggt_feat_warned_non_none_gating = True
+
+        x_in = self._preprocess_render_for_vggt(colors)
+        num_views = int(x_in.shape[0])
+
+        # CRITICAL: do NOT wrap this forward with torch.no_grad().
+        # VGGT weights are frozen, but gradients must flow to render input
+        # so feature loss can backpropagate to gaussians.
+        if self.device.startswith("cuda"):
+            with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+                pred = self.vggt_feat_model(x_in)
+        else:
+            pred = self.vggt_feat_model(x_in)
+
+        if cfg.vggt_feat_phi_name not in pred:
+            raise ValueError(
+                f"VGGT output missing key '{cfg.vggt_feat_phi_name}' for feature loss"
+            )
+        phi_render = self._vggt_output_to_vchw(
+            pred[cfg.vggt_feat_phi_name], num_views=num_views, key=cfg.vggt_feat_phi_name
+        ).float()
+        if tuple(phi_render.shape[-2:]) != tuple(self.vggt_feat_phi_size):
+            phi_render = F.interpolate(
+                phi_render,
+                size=self.vggt_feat_phi_size,
+                mode="bilinear",
+                align_corners=False,
+            )
+        if tuple(phi_gt.shape[-2:]) != tuple(self.vggt_feat_phi_size):
+            phi_gt = F.interpolate(
+                phi_gt,
+                size=self.vggt_feat_phi_size,
+                mode="bilinear",
+                align_corners=False,
+            )
+
+        diff = (phi_render - phi_gt).abs()  # [B,C,Hf,Wf], v1 uses L1
+        weight_map: Optional[Tensor] = None
+        if cfg.vggt_feat_use_conf and conf_gt is not None:
+            conf_use = conf_gt
+            if conf_use.shape[1] != 1:
+                conf_use = conf_use.mean(dim=1, keepdim=True)
+            if tuple(conf_use.shape[-2:]) != tuple(self.vggt_feat_phi_size):
+                conf_use = F.interpolate(
+                    conf_use, size=self.vggt_feat_phi_size, mode="bilinear", align_corners=False
+                )
+            conf_use = conf_use.clamp(0.0, 1.0)
+
+            if cfg.vggt_feat_phi_name == "depth" and "depth_conf" in pred:
+                conf_render = self._vggt_output_to_vchw(
+                    pred["depth_conf"], num_views=num_views, key="depth_conf"
+                ).float()
+                if conf_render.shape[1] != 1:
+                    conf_render = conf_render.mean(dim=1, keepdim=True)
+                if tuple(conf_render.shape[-2:]) != tuple(self.vggt_feat_phi_size):
+                    conf_render = F.interpolate(
+                        conf_render,
+                        size=self.vggt_feat_phi_size,
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+                conf_use = torch.minimum(conf_use, conf_render.clamp(0.0, 1.0))
+            weight_map = conf_use
+
+        patch_k = int(cfg.vggt_feat_patch_k)
+        if patch_k > 0:
+            patch_hw = max(int(cfg.vggt_feat_patch_hw), 1)
+            bsz, _, hf, wf = diff.shape
+            ph = min(patch_hw, hf)
+            pw = min(patch_hw, wf)
+            patch_mask = torch.zeros((bsz, 1, hf, wf), device=self.device, dtype=torch.float32)
+            max_y = max(hf - ph, 0)
+            max_x = max(wf - pw, 0)
+            for b in range(bsz):
+                for _ in range(patch_k):
+                    y0 = int(torch.randint(0, max_y + 1, (1,), device=self.device).item())
+                    x0 = int(torch.randint(0, max_x + 1, (1,), device=self.device).item())
+                    patch_mask[b, 0, y0 : y0 + ph, x0 : x0 + pw] = 1.0
+            weight_map = patch_mask if weight_map is None else (weight_map * patch_mask)
+
+        if weight_map is None:
+            feat_loss = diff.mean()
+            active = int(diff.shape[0] * diff.shape[-2] * diff.shape[-1])
+            return feat_loss, active
+
+        w = weight_map
+        if w.shape[1] == 1 and diff.shape[1] > 1:
+            w = w.expand(-1, diff.shape[1], -1, -1)
+        w_sum = w.sum()
+        feat_loss = (diff * w).sum() / w_sum.clamp(min=1e-6)
+        active = int((weight_map > 0).sum().item())
+        return feat_loss, active
 
     def _load_rgb_image_for_corr(self, cam_idx: int, frame_idx: int) -> np.ndarray:
         """Load an RGB frame in the same way as the dataset loader (no random crop)."""
@@ -2804,6 +3233,12 @@ class FreeTime4DRunner:
             print(f"  [PURE RELOCATION MODE] Budget pruning every {cfg.budget_prune_every} steps (threshold={cfg.budget_prune_threshold})")
         if cfg.packed:
             print(f"  [MEMORY] Packed mode enabled for large Gaussian counts")
+        if cfg.lambda_vggt_feat > 0.0:
+            print(
+                f"  [VGGT FEAT] lambda={cfg.lambda_vggt_feat} phi={cfg.vggt_feat_phi_name} "
+                f"start={cfg.vggt_feat_start_step} every={cfg.vggt_feat_every} "
+                f"patch_k={cfg.vggt_feat_patch_k} patch_hw={cfg.vggt_feat_patch_hw}"
+            )
         print("="*70 + "\n")
 
         # Resume from checkpoint if applicable
@@ -2988,8 +3423,31 @@ class FreeTime4DRunner:
                     )
             loss_corr = cfg.lambda_corr * corr_loss
 
+            # 6. VGGT Feature Metric Loss (optional, default disabled)
+            feat_loss = torch.tensor(0.0, device=device)
+            feat_active = 0
+            use_feat_loss = (
+                self.vggt_feat_model is not None
+                and cfg.lambda_vggt_feat > 0.0
+                and step >= int(cfg.vggt_feat_start_step)
+                and (step % max(int(cfg.vggt_feat_every), 1) == 0)
+            )
+            if use_feat_loss:
+                feat_loss, feat_active = self._compute_vggt_feature_loss(
+                    colors=colors,
+                    data=data,
+                )
+                if step % max(int(cfg.tb_every), 1) == 0:
+                    print(
+                        "[VGGTFeat] "
+                        f"phi={cfg.vggt_feat_phi_name} "
+                        f"active={feat_active} "
+                        f"feat_loss={float(feat_loss.item()):.6f}"
+                    )
+            loss_feat = cfg.lambda_vggt_feat * feat_loss
+
             # Total loss
-            loss = loss_img + loss_ssim + loss_lpips + loss_4d_reg + loss_dur_reg + loss_corr
+            loss = loss_img + loss_ssim + loss_lpips + loss_4d_reg + loss_dur_reg + loss_corr + loss_feat
 
             # Backward
             loss.backward()
@@ -3111,6 +3569,7 @@ class FreeTime4DRunner:
                 self.writer.add_scalar("loss/lpips_raw", lpips_loss.item(), step)
                 self.writer.add_scalar("loss/4d_reg_raw", reg_4d_loss.item(), step)
                 self.writer.add_scalar("loss/corr_raw", corr_loss.item(), step)
+                self.writer.add_scalar("loss/feat_raw", feat_loss.item(), step)
 
                 # --- Weighted Loss Components (what goes into total) ---
                 self.writer.add_scalar("loss_weighted/l1", loss_img.item(), step)
@@ -3118,10 +3577,13 @@ class FreeTime4DRunner:
                 self.writer.add_scalar("loss_weighted/lpips", loss_lpips.item(), step)
                 self.writer.add_scalar("loss_weighted/4d_reg", loss_4d_reg.item(), step)
                 self.writer.add_scalar("loss_weighted/corr", loss_corr.item(), step)
+                self.writer.add_scalar("loss_weighted/feat", loss_feat.item(), step)
                 if pseudo_mask_active_ratio is not None:
                     self.writer.add_scalar("pseudo_mask/active_ratio", pseudo_mask_active_ratio, step)
                 if corr_pairs > 0:
                     self.writer.add_scalar("corr/pairs", corr_pairs, step)
+                if feat_active > 0:
+                    self.writer.add_scalar("vggt_feat/active", feat_active, step)
 
                 # --- Quality Metrics ---
                 self.writer.add_scalar("metrics/ssim", ssim_val.item(), step)  # Higher is better
