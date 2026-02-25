@@ -137,6 +137,19 @@ def _write_metrics_csv(path: Path) -> None:
             "notes": "",
         },
         {
+            "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/feature_loss_v2_600",
+            "gate": "",
+            "dataset": "selfcap_bar_8cam60f",
+            "stage": "test",
+            "step": "599",
+            "psnr": "11.9",
+            "ssim": "0.64",
+            "lpips": "0.22",
+            "tlpips": "0.015",
+            "num_gs": "109",
+            "notes": "",
+        },
+        {
             "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/feature_loss_v1_retry_lam0.005_s200_600",
             "gate": "",
             "dataset": "selfcap_bar_8cam60f",
@@ -245,6 +258,7 @@ def run_test() -> None:
             "ours_strong_600",
             "ours_strong_v2_600",
             "feature_loss_v1_600",
+            "feature_loss_v2_600",
             "feature_loss_v1_retry_lam0.005_s200_600",
         ):
             if must not in md:

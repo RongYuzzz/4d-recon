@@ -60,7 +60,11 @@ def _is_strong_variant(run_name: str) -> bool:
 
 def _is_feature_loss_variant(run_name: str) -> bool:
     lower = run_name.lower()
-    return lower.startswith("feature_loss_v1") and "_600" in lower
+    if "smoke" in lower:
+        return False
+    if not lower.endswith("_600"):
+        return False
+    return lower.startswith("feature_loss_v1") or lower.startswith("feature_loss_v2")
 
 
 def _is_weak_v2_variant(run_name: str) -> bool:
