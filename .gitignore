@@ -28,6 +28,7 @@ artifacts/report_packs/*.tar.gz
 # Logs / temp
 *.log
 *.tmp
+.tmp_local/
 
 # Local third-party archives
 third_party/*.tar.gz
