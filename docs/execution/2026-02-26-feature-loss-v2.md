@@ -102,6 +102,16 @@ MAX_STEPS=200 RESULT_TAG=feature_loss_v2_gated_smoke200 \
   bash scripts/run_train_feature_loss_v2_gated_selfcap.sh
 ```
 
+M1 跑完后（含 lambda sweep）用一条命令生成对比表 + Pareto：
+```bash
+python3 scripts/analyze_smoke200_m1.py
+```
+
+输出：
+- `outputs/report_pack/scoreboard_smoke200.md`（smoke200 全量对比、相对 `baseline_smoke200` 的 delta）
+- `Pareto Frontier`（maximize PSNR, minimize tLPIPS 的非支配点）
+- `Recommendation`（在阈值约束内的推荐点，便于决定是否进入 full600）
+
 止损条件（M1 就要敢止损）：
 - 200-step 出现“明显压死画质”的退化（类似 v1 PSNR 掉到 16 的级别）。
 - 吞吐 >2× 且无法通过 `every/patch/分辨率` 控制。
