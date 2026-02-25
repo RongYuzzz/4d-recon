@@ -4,6 +4,18 @@
 主阵地：`/root/projects/4d-recon`  
 当前唯一真源协议：`docs/protocol.yaml`（-> `docs/protocols/protocol_v1.yaml`）
 
+## 0. 一页拍板清单（建议会议前 5 分钟就定掉）
+
+> 目的：减少“讨论很久但不落地”的风险。下面每条都给推荐项，专家只需要确认/否决。
+
+1. **唯一主线（02-26+）**：VGGT feature metric loss v2（推荐：YES）
+2. **主叙事优先级**：主打“短时稳定性（tLPIPS / flicker / ghosting）”，PSNR/LPIPS 作为必要对照（推荐：YES）
+3. **协议纪律**：`protocol_v1` 继续冻结；如需改动必须新建 `protocol_v2.yaml` 并重跑 baseline/control（推荐：YES）
+4. **weak 路线是否继续投入 GPU**：停止在 canonical 上做 `PSEUDO_MASK_WEIGHT/END_STEP` 大 sweep（已止损）；weak 仅保留为对照与“关键发现”（推荐：YES）
+5. **strong 路线定位**：timebox 加分项，不拖主线（推荐：YES）
+6. **反 cherry-pick 口径**：优先采用 “second segment（seg200_260）” 作为附录证据，同时准备“第二场景 short-run”作为备份（推荐：YES）
+7. **是否提前开 `protocol_v2`（更长预算/启用 densification/更大分辨率）**：02-26～03-08 阶段不建议开（会成倍增加 baseline 重跑成本）；等 feature-loss v2 出趋势后再决定（推荐：先 NO）
+
 ## 1. 本次讨论目标（请专家当场拍板）
 
 1. **冻结 02-26+ 的唯一主线**：是否确认采用 **VGGT feature metric loss** 作为后续推进主线（推荐）。
@@ -27,6 +39,7 @@
 
 ### 2.2 证据链与复现入口（已具备）
 
+- 工程基底版本已固化（用于可追溯）：见 `notes/decision-log.md`（FreeTimeGsVanilla 主分支快照 commit hash 已记录）。
 - 一键数据适配：`scripts/adapt_selfcap_release_to_freetime.py`（输入 `data/selfcap/bar-release.tar.gz`）
 - 训练入口：
   - baseline：`scripts/run_train_baseline_selfcap.sh`
@@ -41,7 +54,7 @@
 
 ### 2.3 当前最关键的观测（决定后续方向）
 
-当前 canonical 下（test@599）的结果摘要来自：`docs/report_pack/2026-02-25-v12/metrics.csv`：
+当前 canonical 下（test@599）的结果摘要来自：`docs/report_pack/2026-02-25-v13/metrics.csv`：
 
 | run | PSNR | SSIM | LPIPS | tLPIPS | 结论 |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -56,6 +69,27 @@
 - **mask 级 cue + photometric reweight（weak）目前要么无效，要么在拖后腿**（control 更好）。
 - KLT strong 已降级为 bridge/attempt，继续堆 strong 工程会被质疑“创新点悬空”。
 - 因此后续必须把 VGGT 从“mask 工具人”提升到“可辩护 prior”，最短路径是 **feature metric loss**（但需要 v2 规格，v1 失败不代表路线错）。
+
+### 2.4 关键补充进度（对“完成项目”很关键）
+
+1. **v13 快照已修复已知文档/口径问题**
+- `docs/report_pack/2026-02-25-v13/scoreboard.md` 已为“干净版本”（修复了误用重定向导致的文件头污染）。
+- `strong v3` 在 `ablation_notes.md` / `Progress.md` 的指标口径已按 `metrics.csv` 校正。
+
+2. **weak 的“只调 w/end”的路线已止损**
+- `notes/weak_tuning_selfcap_bar.md` 已追加 `Weak Mask Sweep v2（2026-02-25, GPU1）`：两次 full600 均无法消除 `control > weak` 风险信号，结论为 **STOPLOSS**。
+
+3. **已具备 anti-cherrypick 证据位**
+- 同场景 second segment（`seg200_260`）在 `notes/anti_cherrypick_seg200_260.md` 中记录：`ours-weak` 相对 `baseline` 有可见但小幅收益（ΔPSNR `+0.2281`）。
+- 这条证据的意义是“防 cherry-pick”，不是用来反向挑段讲提升。
+
+4. **速度信号不是“全零死路”（用于防守/也影响后续判断）**
+- `notes/velocity_stats_selfcap_bar_8cam60f.md` 显示：`||v||` 在训练后显著非零（mean 从 `0.0169` 到 `0.2515`），因此“完全没有速度信号”不是当前主瓶颈的首要证据。
+
+5. **当前训练预算/配置对“最终画质上限”可能有限（需要专家确认是否值得为 final 开 v2）**
+- 现状：`config_name=default_keyframe_small` + `max_steps_full=600` 是一个“短预算”协议，适合做闭环与机制对比，但可能不适合讲“高保真重建”。
+- 风险：若最终需要显著提高画质，可能必须启用更长训练或 densification（意味着 `protocol_v2` + baseline/control 全重跑）。
+- 建议：在 feature-loss v2 还没出趋势前，不要贸然开 v2；否则会把 GPU 都消耗在重跑 baseline 上。
 
 ## 3. 02-26+ 推荐推进主线（建议专家拍板冻结）
 
@@ -102,6 +136,23 @@
 反 cherry-pick（最终必须有其一）：
 - 方案 A：同场景第二段（已具备 appendix 协议）：`docs/protocols/protocol_v1_seg200_260.yaml`
 - 方案 B：第二场景 short-run（同协议、短 steps、定性即可）
+
+### 3.4 需要专家重点提醒的“细节坑位”（不提前约束，后面会返工）
+
+1. **特征对齐（最容易把 feature loss 变成“惩罚坐标误差”）**
+- 需要明确：GT feature 的输入分辨率、crop 策略、归一化方式，必须与 render->VGGT 的路径一致。
+- cache 里必须写死 meta（已在 v1 做了 `meta.json`，但 v2 需要继续强化审计）。
+
+2. **phi 选择（决定你是在“补纹理”还是“压死几何”）**
+- 需要专家对“用 depth/几何类 vs 中间层语义特征”的优先级给建议。
+- 推荐优先尝试中间层/多层组合，而不是把 depth 当作 feature loss 的默认。
+
+3. **patch/gating 的定义（决定吞吐与有效性）**
+- gating 若用帧差：需要固定阈值/比例并写入协议附录（否则又会变成“挑出来的提升”）。
+- patch 采样必须可复现（seed 固定，采样策略写入 cfg/日志）。
+
+4. **成功线的拍板（会直接影响你们最终 claim）**
+- 需要专家确认：是否允许 “tLPIPS 明显下降但 PSNR/LPIPS 小幅退化” 作为主 claim（时间稳定性优先）。
 
 ## 4. 备选路线与止损定位（避免抢主线 GPU）
 
@@ -152,10 +203,54 @@
 ## 附录 A：关键证据文件索引（会议时快速打开）
 
 - 主线评测协议：`docs/protocol.yaml`、`docs/protocols/protocol_v1.yaml`
-- 当前结果快照（v12）：`docs/report_pack/2026-02-25-v12/metrics.csv`
+- 当前结果快照（v13）：`docs/report_pack/2026-02-25-v13/metrics.csv`
 - weak 风险与 probe 结论：`notes/weak_vggt_probe_selfcap_bar.md`
+- weak v2 sweep 止损结论：`notes/weak_tuning_selfcap_bar.md`（末尾 v2 段落）
 - strong v3 止损结论：`notes/ours_strong_v3_gated_attempt.md`
 - feature loss v1 尝试与止损：`notes/feature_loss_v1_attempt.md`
 - anti-cherrypick(seg200_260)：`docs/protocols/protocol_v1_seg200_260.yaml`、`notes/anti_cherrypick_seg200_260.md`
 - 速度统计（防守页）：`notes/velocity_stats_selfcap_bar_8cam60f.md`（如需补图可由脚本导出）
 
+---
+
+## 7. 进度安排表（用于“完成项目”的宏观推进）
+
+> 说明：这是按“当前仅 A/B 两人两卡（GPU0/GPU1）”的节奏制定；若人力恢复，可把同周任务再细分并行。
+>  
+> 时间范围先按 `docs/execution/2026-02-12-4d-reconstruction-execution.md` 的 3 月里程碑组织；具体截止日期需结合你们学校/导师节点再落到日历。
+
+### 7.1 里程碑（必须可审计）
+
+1. **M1（主线落地）**：feature-loss v2 端到端可跑（含 cache、训练、评测、报表入 scoreboard）
+2. **M2（主线趋势）**：在 canonical 上至少出现“趋势可辩护”的指标变化或明确失败归因（两次 full600 内给结论）
+3. **M3（防 cherry-pick）**：seg2（或第二场景）上完成 baseline vs ours 的对照（short-run 允许）
+4. **M4（写作闭环）**：Method/Experiments/Failure cases 初稿（图表可复现、证据路径可追溯）
+
+### 7.2 周计划表（建议作为会议拍板版）
+
+| 周期 | 负责人/资源 | 目标 | 必交产物（可审计） | 止损条件 |
+| --- | --- | --- | --- | --- |
+| 02-26 ～ 03-01 | A(无GPU) + B(GPU1) | 设计冻结 + v2 最小实现 + 200-step sanity | 1) `feature_loss_v2` 代码与 flags 测试；2) cache v2 产物+meta；3) 200-step 视频+stats；4) 文档：`notes/feature_loss_v2_design.md`（若新增） | 吞吐>2x 且无法通过 every/patch 降下来；或 200-step 直接明显退化 |
+| 03-02 ～ 03-08 | B(GPU1) + A(打包) | canonical full600：v2 与 v2_gated（最多 2 次 full600） | 1) `outputs/protocol_v1/.../feature_loss_v2*_600/stats/test_step0599.json`；2) report-pack vN 快照与 sha | 连续 2 次 full600 无任何趋势 -> stoploss，转入 Plan‑B 评估 |
+| 03-09 ～ 03-15 | A(GPU0 可选) + B(GPU1) | 反 cherry-pick：seg2 或第二场景 short-run | 1) seg2 的 baseline vs ours（或第二场景）对照；2) 失败模式归类更新 `docs/report_pack/*/failure_cases.md` | 新场景适配成本失控（>1天还没出 stats）则回退 seg2 |
+| 03-16 ～ 03-22 | B(GPU1, timebox) | strong（VGGT-based）加分项尝试（可失败） | 1) matching/feature 可视化；2) 1-2 次 full run 以内的审计结论；3) stoploss 记录 | 72h 或 3 次 full run 上限触发立即停止 |
+| 03-23 ～ 03-31 | A主导写作 + B补实验缺口 | 写作与 evidence 固化节奏化 | 1) Method/Experiments/Failure cases 初稿；2) evidence pack 周更（sha 入库） | 写作缺证据则暂停探索，补齐证据链后再写 |
+
+### 7.3 会议上必须确认的“日程依赖”（否则表无法落地）
+
+1. 你们的最终“完成项目”硬截止日期（学校/导师/答辩节点）
+2. 这段时间是否稳定只有两卡两人，还是会恢复到三人三卡
+3. 是否强制需要“第二场景 full600”，还是允许“第二场景 short-run + 定性”
+
+### 7.4 03-31 之后（可选扩展，用于“真正最终完成”而不是只到初稿）
+
+> 这一段依赖你们的真实截止日期（论文终稿/答辩）。建议专家给一个“最小必做清单”，其余全部当加分项。
+
+1. **多场景最小泛化（防守用）**
+- 目标：至少 1 个额外场景（或同场景第二段）跑出 baseline vs ours 的短跑对比（可不追 full600）。
+
+2. **长跑定性（只讲现象，不当主 claim）**
+- 目标：挑 1 个代表性配置跑更长步数，出一条“长时序视频”作为附录/愿景，不把它作为主要定量对比。
+
+3. **写作收口**
+- 目标：把 `docs/report_pack/*` 与 `notes/*` 升级成论文/报告可直接引用的图表与叙事，并保持 evidence 可复现。
