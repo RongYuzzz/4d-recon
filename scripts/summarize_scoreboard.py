@@ -63,8 +63,15 @@ def _is_feature_loss_variant(run_name: str) -> bool:
     return lower.startswith("feature_loss_v1") and "_600" in lower
 
 
-def _keep_run(run_name: str) -> bool:
+def _is_weak_v2_variant(run_name: str) -> bool:
+    lower = run_name.lower()
+    return lower.startswith("ours_weak_v2_") and lower.endswith("_600")
+
+
+def _keep_run(run_name: str, include_weak_v2: bool) -> bool:
     if run_name in CORE_RUNS:
+        return True
+    if include_weak_v2 and _is_weak_v2_variant(run_name):
         return True
     return _is_strong_variant(run_name) or _is_feature_loss_variant(run_name)
 
@@ -74,13 +81,15 @@ def _run_order_key(run_name: str) -> tuple[int, str]:
         return (0, run_name)
     if run_name == "ours_weak_600":
         return (1, run_name)
-    if run_name == "control_weak_nocue_600":
+    if _is_weak_v2_variant(run_name):
         return (2, run_name)
-    if _is_feature_loss_variant(run_name):
+    if run_name == "control_weak_nocue_600":
         return (3, run_name)
-    if _is_strong_variant(run_name):
+    if _is_feature_loss_variant(run_name):
         return (4, run_name)
-    return (5, run_name)
+    if _is_strong_variant(run_name):
+        return (5, run_name)
+    return (6, run_name)
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,6 +102,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--select_prefix", default="outputs/protocol_v1/")
     parser.add_argument("--step", type=int, default=599)
     parser.add_argument("--stage", default="test")
+    parser.add_argument("--include_weak_v2", action="store_true")
     return parser.parse_args()
 
 
@@ -123,7 +133,7 @@ def main() -> int:
                 continue
 
             run_name = Path(run_dir.rstrip("/")).name
-            if not _keep_run(run_name):
+            if not _keep_run(run_name, args.include_weak_v2):
                 continue
 
             prev = selected.get(run_name)

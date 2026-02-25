@@ -68,6 +68,33 @@ def _write_metrics_csv(path: Path) -> None:
             "num_gs": "102",
             "notes": "",
         },
+        # weak-v2 variants (opt-in only)
+        {
+            "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_v2_w1.0_end200_600",
+            "gate": "",
+            "dataset": "weak_v2_600",
+            "stage": "test",
+            "step": "599",
+            "psnr": "10.5",
+            "ssim": "0.55",
+            "lpips": "0.31",
+            "tlpips": "0.021",
+            "num_gs": "103",
+            "notes": "",
+        },
+        {
+            "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_v2_w1.0_end600_600",
+            "gate": "",
+            "dataset": "weak_v2_600",
+            "stage": "test",
+            "step": "599",
+            "psnr": "10.4",
+            "ssim": "0.54",
+            "lpips": "0.32",
+            "tlpips": "0.022",
+            "num_gs": "104",
+            "notes": "",
+        },
         # gate1-prefixed strong variants
         {
             "run_dir": "outputs/protocol_v1/gate1/selfcap_bar_8cam60f/ours_strong_600",
@@ -79,7 +106,7 @@ def _write_metrics_csv(path: Path) -> None:
             "ssim": "0.65",
             "lpips": "0.20",
             "tlpips": "0.017",
-            "num_gs": "103",
+            "num_gs": "105",
             "notes": "",
         },
         {
@@ -92,7 +119,7 @@ def _write_metrics_csv(path: Path) -> None:
             "ssim": "0.66",
             "lpips": "0.19",
             "tlpips": "0.016",
-            "num_gs": "104",
+            "num_gs": "106",
             "notes": "",
         },
         # feature-loss variants (should be included)
@@ -106,7 +133,7 @@ def _write_metrics_csv(path: Path) -> None:
             "ssim": "0.62",
             "lpips": "0.24",
             "tlpips": "0.017",
-            "num_gs": "105",
+            "num_gs": "107",
             "notes": "",
         },
         {
@@ -119,7 +146,7 @@ def _write_metrics_csv(path: Path) -> None:
             "ssim": "0.63",
             "lpips": "0.23",
             "tlpips": "0.016",
-            "num_gs": "106",
+            "num_gs": "108",
             "notes": "",
         },
         # should be filtered out (smoke)
@@ -171,19 +198,21 @@ def _write_metrics_csv(path: Path) -> None:
 
 
 def run_test() -> None:
-    with tempfile.TemporaryDirectory(prefix="scoreboard_test_") as td:
+    with tempfile.TemporaryDirectory(prefix="scoreboard_test_", dir=REPO_ROOT) as td:
         root = Path(td)
         metrics_csv = root / "outputs" / "report_pack" / "metrics.csv"
         out_md = root / "outputs" / "report_pack" / "scoreboard.md"
+        out_md_with_weak_v2 = root / "outputs" / "report_pack" / "scoreboard_with_weak_v2.md"
         _write_metrics_csv(metrics_csv)
+        rel_metrics_csv = metrics_csv.relative_to(REPO_ROOT)
+        rel_out_md = out_md.relative_to(REPO_ROOT)
+        rel_out_md_with_weak_v2 = out_md_with_weak_v2.relative_to(REPO_ROOT)
 
-        cmd = [
+        common_cmd = [
             sys.executable,
             str(SCRIPT),
             "--metrics_csv",
-            str(metrics_csv),
-            "--out_md",
-            str(out_md),
+            str(rel_metrics_csv),
             "--protocol_id",
             "selfcap_bar_8cam60f_protocol_v1",
             "--select_contains",
@@ -195,7 +224,8 @@ def run_test() -> None:
             "--stage",
             "test",
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        cmd = common_cmd + ["--out_md", str(rel_out_md)]
+        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
         if proc.returncode != 0:
             raise RuntimeError(f"summarize_scoreboard failed:\n{proc.stdout}\n{proc.stderr}")
         if not out_md.exists():
@@ -206,6 +236,8 @@ def run_test() -> None:
             raise AssertionError("status line should be written to stderr")
 
         md = out_md.read_text(encoding="utf-8")
+        if f"- Source: `{rel_metrics_csv}`" not in md:
+            raise AssertionError("repo 内 Source 路径应为相对路径")
         for must in (
             "baseline_600",
             "ours_weak_600",
@@ -217,6 +249,12 @@ def run_test() -> None:
         ):
             if must not in md:
                 raise AssertionError(f"missing row: {must}")
+        for weak_v2 in (
+            "ours_weak_v2_w1.0_end200_600",
+            "ours_weak_v2_w1.0_end600_600",
+        ):
+            if weak_v2 in md:
+                raise AssertionError("default scoreboard should not include weak_v2 rows")
         if "ours_strong_smoke_600" in md:
             raise AssertionError("smoke row should be filtered out")
         if "ΔPSNR" not in md or "ΔSSIM" not in md or "ΔLPIPS" not in md or "ΔtLPIPS" not in md:
@@ -231,6 +269,31 @@ def run_test() -> None:
             raise AssertionError("risk section should mention control vs ours_weak")
         if "结论要点（占位）" not in md:
             raise AssertionError("missing takeaway placeholders")
+
+        cmd_with_weak_v2 = common_cmd + [
+            "--out_md",
+            str(rel_out_md_with_weak_v2),
+            "--include_weak_v2",
+        ]
+        proc2 = subprocess.run(cmd_with_weak_v2, capture_output=True, text=True, cwd=REPO_ROOT)
+        if proc2.returncode != 0:
+            raise RuntimeError(f"summarize_scoreboard --include_weak_v2 failed:\n{proc2.stdout}\n{proc2.stderr}")
+        if not out_md_with_weak_v2.exists():
+            raise AssertionError("scoreboard_with_weak_v2.md missing")
+        if proc2.stdout.strip():
+            raise AssertionError(
+                f"stdout should stay empty with --include_weak_v2, got: {proc2.stdout.strip()}"
+            )
+        if "wrote " not in proc2.stderr:
+            raise AssertionError("status line should be written to stderr with --include_weak_v2")
+
+        md_with_weak_v2 = out_md_with_weak_v2.read_text(encoding="utf-8")
+        for weak_v2 in (
+            "ours_weak_v2_w1.0_end200_600",
+            "ours_weak_v2_w1.0_end600_600",
+        ):
+            if weak_v2 not in md_with_weak_v2:
+                raise AssertionError(f"missing weak_v2 row with flag: {weak_v2}")
 
     # When metrics path is inside repo, Source should be repo-relative (portable in docs snapshots).
     with tempfile.TemporaryDirectory(prefix="scoreboard_rel_", dir=REPO_ROOT) as td_rel:
