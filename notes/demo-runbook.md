@@ -27,36 +27,37 @@ $PY scripts/adapt_selfcap_release_to_freetime.py \
 test -d data/selfcap_bar_8cam60f/triangulation
 ```
 
-2. Protocol v1 (Baseline / Ours-Weak / Control) full runs (GPU2)
+2. Protocol v1 (Baseline / Ours-Weak / Control + Strong) full runs (GPU0/GPU1)
 
 说明：
 - 下面 4 条命令的默认参数已对齐 `docs/protocol.yaml`（相机 split/帧段/seed/global_scale/keyframe_step）。
 - 会同时产出 `val_step*.json` + `test_step*.json`，并在 test 上计算 `tLPIPS`（需要 `eval_sample_every_test=1`，默认已启用）。
+- 单机两卡假设：`GPU0` 负责 baseline/weak/control，`GPU1` 负责 strong 相关。
 
 ```bash
 cd /root/projects/4d-recon
 
 # Baseline (FreeTimeGsVanilla)
-GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600 \
+GPU=0 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600 \
 bash scripts/run_train_baseline_selfcap.sh
 
 # Ours-Weak (cue mining + mask-weighted photometric loss)
-GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600 \
+GPU=0 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600 \
 bash scripts/run_train_ours_weak_selfcap.sh
 
 # Control: same weak path, but constant mask (no cue)
-GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600 \
+GPU=0 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600 \
 bash scripts/run_train_control_weak_nocue_selfcap.sh
 
 # Ours-Strong (temporal correspondences + corr loss; may stoploss)
-GPU=2 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_600 \
+GPU=1 RESULT_DIR=outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_600 \
 bash scripts/run_train_ours_strong_selfcap.sh
 
 # Matching viz (KLT tracks)
 ls -la outputs/correspondences/selfcap_bar_8cam60f_klt/viz
 ```
 
-3. T0 audit (baseline vs zero-velocity, GPU2)
+3. T0 audit (baseline vs zero-velocity, GPU0)
 ```bash
 cd /root/projects/4d-recon
 source /root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/activate
@@ -66,7 +67,7 @@ python third_party/FreeTimeGsVanilla/src/combine_frames_fast_keyframes.py \
   --output-path outputs/t0_selfcap/keyframes_60frames_step5.npz \
   --frame-start 0 --frame-end 59 --keyframe-step 5
 
-CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
+CUDA_VISIBLE_DEVICES=0 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
   --data-dir data/selfcap_bar_8cam60f \
   --init-npz-path outputs/t0_selfcap/keyframes_60frames_step5.npz \
   --result-dir outputs/t0_selfcap/baseline \
@@ -76,7 +77,7 @@ CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_f
   --t0-debug-interval 50 \
   --t0-grad-log-path outputs/t0_selfcap/baseline/t0_grad.csv
 
-CUDA_VISIBLE_DEVICES=2 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
+CUDA_VISIBLE_DEVICES=0 python third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py default_keyframe_small \
   --data-dir data/selfcap_bar_8cam60f \
   --init-npz-path outputs/t0_selfcap/keyframes_60frames_step5.npz \
   --result-dir outputs/t0_selfcap/zero_velocity \
@@ -94,7 +95,10 @@ cd /root/projects/4d-recon
 PY=/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python
 $PY scripts/build_report_pack.py --outputs_root outputs --out_dir outputs/report_pack
 python3 scripts/summarize_scoreboard.py --metrics_csv outputs/report_pack/metrics.csv --out_md outputs/report_pack/scoreboard.md
-$PY scripts/pack_evidence.py --repo_root . --out_tar outputs/report_pack_$(date +%F).tar.gz
+DATE_TAG=$(date +%F)
+$PY scripts/pack_evidence.py --repo_root . --out_tar artifacts/report_packs/report_pack_${DATE_TAG}.tar.gz
+sha256sum artifacts/report_packs/report_pack_${DATE_TAG}.tar.gz | tee -a artifacts/report_packs/SHA256SUMS.txt
+# 提醒：tar.gz 不入库；仅提交 docs 快照与 SHA256SUMS.txt
 ```
 
 ## Playback files
@@ -102,6 +106,7 @@ $PY scripts/pack_evidence.py --repo_root . --out_tar outputs/report_pack_$(date 
 - `outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600/videos/traj_4d_step599.mp4`
 - `outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600/videos/traj_4d_step599.mp4`
 - `outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_600/videos/traj_4d_step599.mp4`
+- `outputs/protocol_v1/selfcap_bar_8cam60f/ours_strong_v3_gate1_detach0_predpred_600/videos/traj_4d_step599.mp4`
 - `outputs/t0_selfcap/baseline/videos/traj_4d_step199.mp4`
 - `outputs/t0_selfcap/zero_velocity/videos/traj_4d_step199.mp4`
 

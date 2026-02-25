@@ -1,11 +1,11 @@
 # 4d-recon 项目进度（Progress）
 
-最后更新：2026-02-24  
+最后更新：2026-02-25  
 对照执行计划：`docs/execution/2026-02-12-4d-reconstruction-execution.md`
 
 ## 0. 当前状态（一句话）
 
-已完成 **T0 基底审计 PASS**、**T1 闭环跑通**、**协议 v1 冻结**、并已产出 **baseline/ours-weak/control/ours-strong(attempt) 的可复现结果**与 **evidence pack v4**；当前主要瓶颈在 **cue mining 质量与收益（弱融合未稳定优于 baseline）**，strong 线按 stoploss 暂停大投入。
+已完成 **协议 v1 冻结 + A/B 双人接管**，并刷新到 **midterm snapshot v12**；当前结论是 **weak 主线仍有风险（control 优于 ours_weak）**、**strong v3 已止损冻结**、**VGGT cue 仅到 probe 且不建议开启 protocol_v2**。
 
 ## 1. 与原执行计划的关键差异（已记录且可辩护）
 
@@ -43,14 +43,15 @@
 
 ## 4. 当前结果摘要（Protocol v1，test@step599）
 
-来源：`docs/report_pack/2026-02-24-v4/metrics.csv`
+来源：`docs/report_pack/2026-02-25-v12/metrics.csv`
 
 | 运行 | PSNR | SSIM | LPIPS | tLPIPS | 备注 |
 |---|---:|---:|---:|---:|---|
 | baseline_600 | 18.9496 | 0.6653 | 0.4048 | 0.0230 | canonical baseline |
 | ours_weak_600 | 19.0194 | 0.6661 | 0.4037 | 0.0231 | diff cue（当前默认） |
 | control_weak_nocue_600 | 19.1099 | 0.6674 | 0.4033 | 0.0236 | control 目前最好（提示 cue 仍需改进） |
-| ours_strong_600 | 19.0236 | 0.6660 | 0.4094 | 0.0233 | strong attempt；按审计结论建议 stoploss |
+| ours_strong_v3_gate1_detach0_predpred_600 | 18.9894 | 0.6648 | 0.4060 | 0.0228 | strong v3：tLPIPS 有小幅改善但 LPIPS/PSNR 退化，已 stoploss |
+| ours_weak_vggt_w0.3_end200_600 | 18.9808 | 0.6651 | 0.4047 | 0.0245 | VGGT probe：无稳定收益，不建议 protocol_v2 |
 
 ## 5. 对照执行计划：Task 1–11 完成情况
 
@@ -72,13 +73,12 @@
 
 ## 6. 当前待办（按优先级）
 
-- 协议内收益线（Weak）：
-  - cue mining 质量“可诊断 + 可止损”（A：cue mining v2/质量统计）。
-  - anti-cherrypick：同场景第二段 60 帧（seg2）复现实验（A）。
-- strong 线（加分项，严格 timebox）：
-  - strong v2（pred@t vs pred@t' 一致性、KLT FB check/weight），只做小预算验证，满足止损线立刻回退（B）。
-- 汇报交付面：
-  - scoreboard 自动生成与 evidence v5 刷新（C）。
+- weak 主线风险仍在：
+  - `control_weak_nocue_600` 仍优于 `ours_weak_600`，需要更合理 cue / 注入策略。
+- strong 主线已冻结：
+  - `ours_strong_v3_gate1_detach0_predpred_600` 触发 stoploss（trade-off 不可接受），暂不扩展算力。
+- 下一步负责人（B）：
+  - 继续“weak 的更合理 cue/注入”或“更强但可解释的 strong”探索，参考 `docs/plans/2026-02-25-owner-b-strong-v3-gated-corr-stoploss.md`。
 
 ## 7. 2026-02-24 评审拍板（对后续计划的影响）
 
