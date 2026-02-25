@@ -3,18 +3,27 @@
 日期：2026-02-25  
 主阵地：`/root/projects/4d-recon`  
 当前唯一真源协议：`docs/protocol.yaml`（-> `docs/protocols/protocol_v1.yaml`）
+状态：已结合外部评审 `review-2026-02-25-v1.md` / `review-2026-02-25-v2.md` 更新为**可执行决议版**（建议以本文件作为“拍板后唯一真源”，避免后续口径漂移）。
 
-## 0. 一页拍板清单（建议会议前 5 分钟就定掉）
+## 0. 一页拍板清单（决议版，必须写死）
 
 > 目的：减少“讨论很久但不落地”的风险。下面每条都给推荐项，专家只需要确认/否决。
 
 1. **唯一主线（02-26+）**：VGGT feature metric loss v2（推荐：YES）
 2. **主叙事优先级**：主打“短时稳定性（tLPIPS / flicker / ghosting）”，PSNR/LPIPS 作为必要对照（推荐：YES）
-3. **协议纪律**：`protocol_v1` 继续冻结；如需改动必须新建 `protocol_v2.yaml` 并重跑 baseline/control（推荐：YES）
+3. **协议纪律（硬约束 A）**：`protocol_v1` 继续冻结；**任何 feature-loss v2 变体必须在同一套 protocol_v1 下对齐 baseline/control**。如需改动训练分布项（帧段/相机/scale/step/resolution/densification），必须新建 `protocol_v2.yaml` 并重跑 baseline/control（推荐：YES）
 4. **weak 路线是否继续投入 GPU**：停止在 canonical 上做 `PSEUDO_MASK_WEIGHT/END_STEP` 大 sweep（已止损）；weak 仅保留为对照与“关键发现”（推荐：YES）
 5. **strong 路线定位**：timebox 加分项，不拖主线（推荐：YES）
 6. **反 cherry-pick 口径**：优先采用 “second segment（seg200_260）” 作为附录证据，同时准备“第二场景 short-run”作为备份（推荐：YES）
 7. **是否提前开 `protocol_v2`（更长预算/启用 densification/更大分辨率）**：02-26～03-08 阶段不建议开（会成倍增加 baseline 重跑成本）；等 feature-loss v2 出趋势后再决定（推荐：先 NO）
+
+### 0.1 成功线与 trade-off（硬约束 B，必须拍板）
+
+> 目的：避免“指标冲突导致永远无法宣布成功”，同时防止答辩时被质疑 cherry-pick。
+
+1. **主成功线优先级**：以 `tLPIPS`（稳定性）为首要成功线；PSNR/LPIPS/SSIM 作为必要对照。
+2. **可接受 trade-off（写死阈值）**：若 `tLPIPS` 达标（建议 ≥10% 下降），允许 `PSNR` 小幅退化（≤0.2 dB）与 `LPIPS` 小幅退化（≤ +0.01），但必须附带“机制解释页 + 失败分析页”。
+3. **禁止口号化**：不允许写“PSNR 下降是必要代价”。必须用 `lambda_vggt_feat` 的小范围 sweep 画 **PSNR vs tLPIPS 的 Pareto 图**，选择 knee point 作为最终配置，并把 sweep 范围与选择依据写入 evidence。
 
 ## 1. 本次讨论目标（请专家当场拍板）
 
@@ -114,18 +123,22 @@
 3. **loss 施加位置不对**：全图/全时刻施加 feature loss 会把优化压成“平均化”；需要 warmup + 只在动态/困难区域触发。
 4. **采样策略问题**：patch 采样若大多落在静态背景，会变成无意义正则；需要 dynamic-patch gating。
 
-### 3.3 v2 的可执行规格（建议作为拍板版）
+### 3.3 v2 的可执行规格（拍板版）
 
 离线 cache（必须离线）：
 - 对 **GT 图像**计算 VGGT 的选定特征层 `phi(I_gt)`，缓存到 `outputs/vggt_cache/<tag>/...`。
+- v2 默认 `phi`：**stride=16 的中间层表观特征**（优先成功率，避免 v1 的 depth 压死模式）；stride=8 仅作为第二变体（stride16 出趋势后再做）。
+- cache 建议直接落盘 **normalized GT feature**（`F.normalize(..., eps=1e-6)`），并写死 meta（层选择、stride、预处理、dtype、phi_size、归一化方式）。
 
 训练时（必须可控）：
 - 只对 `I_render` 前向 VGGT（或轻量 encoder），并与 cache 中 `phi(I_gt)` 对齐计算：
+  - loss：推荐 **normalize + cosine**（`1 - dot(F_pred_n, F_gt_n)`），GT 分支可 `detach()`，但 render 分支严禁 `torch.no_grad()`（否则梯度断）
   - 低频：每 `VGGT_FEAT_EVERY` step 才计算一次（建议 4 或 8）
   - 低分辨率：输入固定小分辨率（例如 256/384，按你们实际实现）
   - patch：每次只采样 K 个 patch（例如 32/64）
   - warmup/ramp：前 20% steps 不开；随后线性 ramp 到目标权重
-  - gating（强烈建议）：只在动态区域/高误差区域采样 patch（先用帧差 gating，不强依赖 cue）
+  - gating（强烈建议）：只在动态区域/高误差区域采样 patch（默认用 framediff gating，不强依赖 cue）
+  - sanity（必须）：GT self-consistency + cache round-trip（用脚本一键检查；否则 debug 会失控）
 
 最小消融矩阵（同 protocol_v1，避免漂）：
 1. baseline_600（已有）
@@ -137,7 +150,7 @@
 - 方案 A：同场景第二段（已具备 appendix 协议）：`docs/protocols/protocol_v1_seg200_260.yaml`
 - 方案 B：第二场景 short-run（同协议、短 steps、定性即可）
 
-### 3.4 需要专家重点提醒的“细节坑位”（不提前约束，后面会返工）
+### 3.4 必须提前约束的“细节坑位”（不写死就会返工）
 
 1. **特征对齐（最容易把 feature loss 变成“惩罚坐标误差”）**
 - 需要明确：GT feature 的输入分辨率、crop 策略、归一化方式，必须与 render->VGGT 的路径一致。
@@ -148,11 +161,12 @@
 - 推荐优先尝试中间层/多层组合，而不是把 depth 当作 feature loss 的默认。
 
 3. **patch/gating 的定义（决定吞吐与有效性）**
-- gating 若用帧差：需要固定阈值/比例并写入协议附录（否则又会变成“挑出来的提升”）。
+- framediff gating：建议用 **top‑p%**（不要阈值），并做曝光/压缩噪声鲁棒化（灰度+blur 或 per-frame normalize 再 diff）。
+- “相机运动导致全图 diff”在 SelfCap 上大概率是伪风险；建议做一次性判定：基于 `sparse/0/images.bin` 检测同相机 pose 是否随时间变化。若相机固定，直接 simple diff；若相机确实在动，才考虑额外的 warp（并必须可回退）。
 - patch 采样必须可复现（seed 固定，采样策略写入 cfg/日志）。
 
 4. **成功线的拍板（会直接影响你们最终 claim）**
-- 需要专家确认：是否允许 “tLPIPS 明显下降但 PSNR/LPIPS 小幅退化” 作为主 claim（时间稳定性优先）。
+- 已拍板：允许 “tLPIPS 明显下降但 PSNR/LPIPS 小幅退化” 作为主 claim，但必须给出 Pareto sweep 证据与机制解释（见 0.1）。
 
 ## 4. 备选路线与止损定位（避免抢主线 GPU）
 
@@ -173,6 +187,8 @@
 约束：
 - 不做 depth‑lift scene flow（容易算力黑洞）
 - 优先利用你们已有的数据契约：`triangulation/points3d_frame*.npy`
+- **纪律**：Plan‑B 不得修改 `data/` 或 `protocol_v1`；输出只允许写到 `outputs/plan_b/...`（避免引入“偷偷改数据导致不可比”）。
+- **自检**：Plan‑B 脚本必须打印并落盘 `||v||` 的 mean/p50/p90/p99、`||v||<1e-4` 比例、最大值、以及时间尺度说明（否则 100% 变黑盒）。
 
 交付形式：
 - 一个初始化脚本 + 1 次 full run 对比 + 失败/成功证据（不允许演变成新项目）
@@ -189,20 +205,18 @@
 4. **证据链可一键打包**：report-pack + evidence tar + sha256 可追溯（无需提交大文件，但 sha 必须入库）。
 5. **写作材料闭环**：Method/Experiments/Failure cases 三块有图表与证据路径（复用 `docs/report_pack/*` + `notes/*`）。
 
-## 6. 给专家/同行的“问题清单”（请按顺序问，避免发散）
+## 6. 仅剩开放项（如需再咨询专家，按此问；否则按 0/3/4 执行）
 
-1. VGGT feature metric loss 里，`phi` 最推荐选哪一层/哪类特征？（depth vs intermediate features vs multi-layer）
-2. 对齐策略：VGGT 的 `crop/resize/normalize` 应如何与训练渲染视图一致化，避免在惩罚坐标误差？
-3. loss 形式：L2 / cosine / Huber，哪个更稳？是否建议对特征做 `normalize`？
-4. gating：用帧差 gating 是否足够，还是必须依赖 cue mining 输出？K 与 patch size 推荐范围？
-5. 成功线取舍：若 `tLPIPS` 大幅下降但 `PSNR` 小幅下降，是否接受作为主 claim？（需要拍板）
-6. 反 cherry-pick：优先选“seg200_260”还是“第二场景”？（考虑工作量/风险）
+1. 具体到实现：VGGT “stride16 中间层”在你们现有 VGGT 接口里应该怎么稳定取出（hook/显式返回/缓存接口），以及特征通道维度如何处理（仅在实现阶段需要时追问）。
+2. framediff gating 的默认参数：top‑p%（例如 10%）与 patch 预算（`K`、`patch_hw`）的推荐起点与上限。
+3. 成功线阈值微调：`tLPIPS` 达标阈值（默认 10%）与可接受的 PSNR/LPIPS trade-off 上限（默认 0.2dB / +0.01）。
 
 ---
 
 ## 附录 A：关键证据文件索引（会议时快速打开）
 
 - 主线评测协议：`docs/protocol.yaml`、`docs/protocols/protocol_v1.yaml`
+- 主线执行文档（v2）：`docs/execution/2026-02-26-feature-loss-v2.md`
 - 当前结果快照（v13）：`docs/report_pack/2026-02-25-v13/metrics.csv`
 - weak 风险与 probe 结论：`notes/weak_vggt_probe_selfcap_bar.md`
 - weak v2 sweep 止损结论：`notes/weak_tuning_selfcap_bar.md`（末尾 v2 段落）
