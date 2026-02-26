@@ -111,3 +111,35 @@ feature_loss_v1（test@step599, `cam09`）：
 
 结论（一句话）：
 - 在 seg2 上，feature_loss_v1 相比 baseline 呈现“混合变化、接近 baseline”的形态（非稳定全面提升），可视为 anti-cherrypick 证据已补齐。
+
+## 6) A31（control_weak_nocue on seg2）补跑结果（2026-02-26）
+
+按 Plan-B 执行计划补齐 seg2 的零 cue 对照：
+
+```bash
+cd /root/projects/4d-recon/.worktrees/owner-a-20260226-planb
+GPU=0 MAX_STEPS=600 \
+DATA_DIR=data/selfcap_bar_8cam60f_seg200_260 \
+CUE_TAG=selfcap_bar_8cam60f_seg200_260_zeros_control \
+RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/control_weak_nocue_600 \
+bash scripts/run_train_control_weak_nocue_selfcap.sh
+```
+
+产物路径：
+- `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/control_weak_nocue_600/stats/test_step0599.json`
+- `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/control_weak_nocue_600/videos/traj_4d_step599.mp4`
+
+control_weak_nocue（test@step599, `cam09`）：
+- PSNR: `18.1969`
+- SSIM: `0.6369`
+- LPIPS: `0.4157`
+- tLPIPS: `0.02219`
+
+差值（control_weak_nocue - baseline）：
+- ΔPSNR: `+0.1502`
+- ΔSSIM: `+0.0016`
+- ΔLPIPS: `+0.0019`（更差）
+- ΔtLPIPS: `-0.00125`（更好）
+
+结论（一句话）：
+- 在 seg2 上，`control_weak_nocue_600` 呈现“tLPIPS 改善、PSNR/SSIM 略升、LPIPS 微弱变差”的混合趋势，作为 anti-cherrypick 防守证据位已补齐。
