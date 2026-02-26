@@ -7,6 +7,7 @@
 
 ## 方法（Plan-B + mutual NN）
 - 结论：Plan-B 的核心是初始化/先验修正，而非更改评测协议。证据：`docs/report_pack/2026-02-26-v24/ablation_notes.md`、`notes/handoff_planb_seg1800_1860_owner_a.md`。
+- 结论：为排除“模板来自 canonical”的质疑，我们对 seg400_460 与 seg1800_1860 重做了 template hygiene：使用该 slice 自己的 baseline init（positions/colors/times/durations）作为模板，仅替换 velocities，并重跑 planb_init_smoke200；v25 以 re-template 后的结果为准。证据：`docs/report_pack/2026-02-26-v25/planb_anticherrypick.md`。
 - 结论：mutual NN 是当前收益必要组件，去除后指标一致退化。证据：`docs/report_pack/2026-02-26-v24/ablation_notes.md`。
 - 结论：叙事口径统一为 velocity prior 质量/尺度/一致性不足或噪声过大。证据：`docs/report_pack/2026-02-26-v24/failure_cases.md`。
 

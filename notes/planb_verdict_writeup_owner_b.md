@@ -6,6 +6,10 @@
 - 原则：仅替换 init velocities（triangulation -> 3D velocity init），不改 `protocol_v1` 与数据分布项。
 - 约束：feature-loss 主线冻结，不再新增 full600。
 
+## Template Hygiene 声明（防守句）
+
+为排除“模板来自 canonical”的质疑，我们对 seg400_460 与 seg1800_1860 重做了 template hygiene：使用该 slice 自己的 baseline init（positions/colors/times/durations）作为模板，仅替换 velocities，并重跑 planb_init_smoke200；v25 以 re-template 后的结果为准。
+
 ## 三段式写作口径（可直接贴到 slides）
 
 ### 1) Plan-B 一句话定义
