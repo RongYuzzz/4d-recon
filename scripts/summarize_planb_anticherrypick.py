@@ -172,13 +172,16 @@ def main() -> int:
     _append_group(lines, "seg400_460", _filter_group(rows, "seg400_460"))
 
     seg600_rows = _filter_group(rows, "seg600_660")
-    seg300_rows = _filter_group(rows, "seg300_360")
     if seg600_rows:
         _append_group(lines, "seg600_660", seg600_rows)
-    elif seg300_rows:
-        _append_group(lines, "seg300_360 (fallback)", seg300_rows)
     else:
         _append_group(lines, "seg600_660 (missing)", [])
+
+    seg300_rows = _filter_group(rows, "seg300_360")
+    if seg300_rows:
+        _append_group(lines, "seg300_360", seg300_rows)
+    else:
+        _append_group(lines, "seg300_360 (missing)", [])
 
     seg1800_rows = _filter_group(rows, "seg1800_1860")
     if seg1800_rows:

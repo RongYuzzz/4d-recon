@@ -205,13 +205,6 @@ def run_test() -> None:
             },
         ]
 
-        md = _render_markdown(common_rows + seg600_rows + seg1800_rows, root)
-        for heading in ("Canonical", "seg200_260", "seg400_460", "seg600_660", "seg1800_1860"):
-            section = _section_text(md, heading)
-            for token in ("ΔPSNR", "ΔLPIPS", "ΔtLPIPS"):
-                if token not in section:
-                    raise AssertionError(f"missing token {token} in section {heading}")
-
         seg300_rows = [
             {
                 "run_dir": "outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_smoke200",
@@ -240,11 +233,22 @@ def run_test() -> None:
                 "notes": "",
             },
         ]
+
+        md = _render_markdown(common_rows + seg600_rows + seg300_rows + seg1800_rows, root)
+        for heading in ("Canonical", "seg200_260", "seg400_460", "seg600_660", "seg300_360", "seg1800_1860"):
+            section = _section_text(md, heading)
+            for token in ("ΔPSNR", "ΔLPIPS", "ΔtLPIPS"):
+                if token not in section:
+                    raise AssertionError(f"missing token {token} in section {heading}")
+
         md_fallback = _render_markdown(common_rows + seg300_rows, root)
-        section = _section_text(md_fallback, "seg300_360 (fallback)")
+        missing_seg600 = _section_text(md_fallback, "seg600_660 (missing)")
+        if "ΔPSNR=-" not in missing_seg600:
+            raise AssertionError("missing seg600 section should render dash deltas")
+        section = _section_text(md_fallback, "seg300_360")
         for token in ("ΔPSNR", "ΔLPIPS", "ΔtLPIPS"):
             if token not in section:
-                raise AssertionError(f"missing token {token} in fallback section")
+                raise AssertionError(f"missing token {token} in seg300 section")
 
 
 if __name__ == "__main__":
@@ -253,4 +257,4 @@ if __name__ == "__main__":
     except Exception as exc:  # noqa: BLE001
         print(f"FAIL: {exc}")
         sys.exit(1)
-    print("PASS: summarize_planb_anticherrypick renders seg sections with deltas and fallback")
+    print("PASS: summarize_planb_anticherrypick renders seg sections with deltas and seg300 companion slot")
