@@ -52,9 +52,20 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 | baseline_smoke200 | 199 | 12.5847 | 0.6268 | 0.0864 |
 | planb_init_smoke200 | 199 | 12.7752 | 0.5779 | 0.0339 |
 
-结论：与 canonical/seg200_260/seg400_460 同向（ΔPSNR `+0.1905`、ΔLPIPS `-0.0488`、ΔtLPIPS `-0.0525`），可作为第四段 anti-cherrypick 防守位。证据路径：`docs/report_pack/2026-02-26-v23/planb_anticherrypick.md`、`notes/anti_cherrypick_seg600_660.md`。
+结论：与 canonical/seg200_260/seg400_460 同向（ΔPSNR `+0.1905`、ΔLPIPS `-0.0488`、ΔtLPIPS `-0.0525`），可作为第四段 anti-cherrypick 防守位。证据路径：`docs/report_pack/2026-02-26-v24/planb_anticherrypick.md`、`notes/anti_cherrypick_seg600_660.md`。
 
-### 6) 预算纪律（必须写明）
+### 6) seg1800_1860 smoke200（新增防守位）
+
+说明：seg1800_1860 仅补 **smoke200（test@step199）**，不新增 full600（budget-neutral）。
+
+| Run | Step | PSNR | LPIPS | tLPIPS |
+| --- | ---: | ---: | ---: | ---: |
+| baseline_smoke200 | 199 | 12.5796 | 0.6290 | 0.0888 |
+| planb_init_smoke200 | 199 | 12.7081 | 0.5845 | 0.0356 |
+
+结论：与 canonical/seg200_260/seg400_460/seg600_660 同向（ΔPSNR `+0.1285`、ΔLPIPS `-0.0445`、ΔtLPIPS `-0.0533`），可作为第五段 anti-cherrypick 防守位。证据路径：`docs/report_pack/2026-02-26-v24/planb_anticherrypick.md`、`notes/anti_cherrypick_seg1800_1860.md`。
+
+### 7) 预算纪律（必须写明）
 
 - 现阶段 full600 预算已用尽；后续若需要继续跑 full600，必须先新增决议（扩预算）后再执行。
 - 在无新决议前，仅允许 No-GPU 诊断、写作与证据链刷新，不新增训练预算。
