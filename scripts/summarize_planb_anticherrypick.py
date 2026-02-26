@@ -75,6 +75,9 @@ def _filter_group(rows: list[dict[str, str]], group_key: str) -> list[dict[str, 
         elif group_key == "seg300_360":
             if "selfcap_bar_8cam60f_seg300_360" not in run_dir:
                 continue
+        elif group_key == "seg1800_1860":
+            if "selfcap_bar_8cam60f_seg1800_1860" not in run_dir:
+                continue
         else:
             continue
         filtered.append(row)
@@ -176,6 +179,12 @@ def main() -> int:
         _append_group(lines, "seg300_360 (fallback)", seg300_rows)
     else:
         _append_group(lines, "seg600_660 (missing)", [])
+
+    seg1800_rows = _filter_group(rows, "seg1800_1860")
+    if seg1800_rows:
+        _append_group(lines, "seg1800_1860", seg1800_rows)
+    else:
+        _append_group(lines, "seg1800_1860 (missing)", [])
 
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text("\n".join(lines), encoding="utf-8")

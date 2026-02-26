@@ -176,9 +176,37 @@ def run_test() -> None:
                 "notes": "",
             },
         ]
+        seg1800_rows = [
+            {
+                "run_dir": "outputs/protocol_v1_seg1800_1860/selfcap_bar_8cam60f_seg1800_1860/baseline_smoke200",
+                "gate": "",
+                "dataset": "selfcap_bar_8cam60f_seg1800_1860",
+                "stage": "test",
+                "step": "199",
+                "psnr": "8.95",
+                "ssim": "0.39",
+                "lpips": "0.398",
+                "tlpips": "0.034",
+                "num_gs": "90",
+                "notes": "",
+            },
+            {
+                "run_dir": "outputs/protocol_v1_seg1800_1860/selfcap_bar_8cam60f_seg1800_1860/planb_init_smoke200",
+                "gate": "",
+                "dataset": "selfcap_bar_8cam60f_seg1800_1860",
+                "stage": "test",
+                "step": "199",
+                "psnr": "9.28",
+                "ssim": "0.42",
+                "lpips": "0.372",
+                "tlpips": "0.030",
+                "num_gs": "96",
+                "notes": "",
+            },
+        ]
 
-        md = _render_markdown(common_rows + seg600_rows, root)
-        for heading in ("Canonical", "seg200_260", "seg400_460", "seg600_660"):
+        md = _render_markdown(common_rows + seg600_rows + seg1800_rows, root)
+        for heading in ("Canonical", "seg200_260", "seg400_460", "seg600_660", "seg1800_1860"):
             section = _section_text(md, heading)
             for token in ("ΔPSNR", "ΔLPIPS", "ΔtLPIPS"):
                 if token not in section:
