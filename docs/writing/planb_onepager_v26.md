@@ -46,6 +46,7 @@
 - 必播 2：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg200_260_step599.mp4`（seg200_260）。
 - 任选 1：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg400_460_step199.mp4`（或 seg300/600/1800 任一 smoke200）。
 - 会议短片（12s 版本）与推荐播放顺序：`notes/planb_meeting_assets_v26_owner_a.md`。
+- 会议播放 runbook（优先 loop12s 版本）：`notes/planb_meeting_runbook_v26_owner_a.md`。
 
 ## Owner A 接入口（已接线）
 - 审计摘要：`notes/planb_v26_audit_owner_a.md`

@@ -36,6 +36,7 @@
 - `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg200_260_step599.mp4`（seg200_260）
 - `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg400_460_step199.mp4`（可选，或 seg300/600/1800 其一）
 - 会议 clips/frames 清单与推荐播放顺序：`notes/planb_meeting_assets_v26_owner_a.md`
+- 会议播放 runbook（优先 loop12s 版本）：`notes/planb_meeting_runbook_v26_owner_a.md`
 - 定性主图索引：`notes/planb_qualitative_frames_v26_owner_a.md`
 - 资产交接说明：`notes/handoff_planb_v26_assets_owner_a.md`
 

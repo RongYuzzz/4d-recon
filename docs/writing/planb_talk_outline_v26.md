@@ -8,6 +8,7 @@
 - Slide 1（canonical，约 90s）：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_step599.mp4`。
 - Slide 2（seg200_260，约 90s）：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg200_260_step599.mp4`。
 - Slide 3（可选其一，约 60-90s）：推荐 `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg400_460_step199.mp4`。
+- 若 `outputs/qualitative/planb_vs_baseline/clips_v26_looped/` 存在，优先播放 loop12s 版本（按 `notes/planb_meeting_runbook_v26_owner_a.md` 执行）。
 - 讲法：只讲“同向改善”与“先看视觉，再看数字”，不展开机制争论。
 - 主图与抽帧索引：`notes/planb_qualitative_frames_v26_owner_a.md`。
 

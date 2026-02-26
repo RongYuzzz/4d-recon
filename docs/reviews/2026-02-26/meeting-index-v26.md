@@ -10,6 +10,7 @@
 - `docs/writing/planb_qa_cards_v26.md`
 - `notes/planb_meeting_assets_v26_owner_a.md`
 - `notes/planb_meeting_runbook_v26_owner_a.md`
+- 播放策略：若 `outputs/qualitative/planb_vs_baseline/clips_v26_looped/` 存在，优先使用 loop12s 版本。
 
 ## Evidence Source of Truth
 - `docs/decisions/2026-02-26-planb-v26-freeze.md`（唯一决议真源）
