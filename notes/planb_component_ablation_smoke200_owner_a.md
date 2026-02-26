@@ -38,6 +38,18 @@
 | planb_ablate_no_mutual_smoke200 | 12.7849 | 0.5892 | 0.0470 | -0.0534 | +0.0097 | +0.0135 |
 | planb_ablate_clip_p95_smoke200 | 12.8411 | 0.5791 | 0.0329 | +0.0028 | -0.0005 | -0.0006 |
 
+## Throughput 摘要（step199）
+
+| run | iter_per_sec | elapsed_sec |
+|---|---:|---:|
+| baseline_smoke200_planb_window | 18.8900 | 10.5876 |
+| planb_init_smoke200 (default) | 19.8823 | 10.0592 |
+| planb_ablate_no_drift_smoke200 | 35.2686 | 5.6708 |
+| planb_ablate_no_mutual_smoke200 | 39.0894 | 5.1165 |
+| planb_ablate_clip_p95_smoke200 | 38.9707 | 5.1321 |
+
+- 说明：该表用于效率与止损观察（是否出现异常慢/卡住）；方法优劣判定仍以 PSNR/LPIPS/tLPIPS 为主。
+
 ## 结论（可用于写作）
 
 - **mutual NN 是关键组件**：禁用后（`no_mutual`）相对 default 出现一致退化，`tLPIPS +0.0135`、`LPIPS +0.0097`、`PSNR -0.0534`。
