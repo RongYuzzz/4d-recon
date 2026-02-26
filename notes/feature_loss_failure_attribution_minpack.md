@@ -91,18 +91,18 @@ python3 scripts/analyze_vggt_gate_framediff.py \
 - `outputs/report_pack/diagnostics/gate_framediff_mean_by_view.csv`
 - `outputs/report_pack/diagnostics/gate_framediff_heatmap.png`
 
-## 5) 梯度链检查（10 step 小跑）
+## 5) 梯度链检查（DONE）
 
 目标：确认 feature loss 的梯度链路非零，避免“loss 有值但不驱动参数”。
 
-建议执行：
-- 在 10 step 小跑中打印/记录 `||grad(render_rgb)||` 与 `||grad(gaussian params)||`；
-- 可沿用 trainer 现有 grad 日志路径机制（例如 `t0_grad_log_path`）并增加 feature-loss 相关 norm 打印；
-- 本任务不改训练数值逻辑，只做日志/诊断补丁。
+证据路径：
+- `outputs/report_pack/diagnostics/feature_loss_v2_grad_chain.csv`
+- `notes/feature_loss_v2_grad_chain_owner_a.md`
+- `notes/handoff_feature_loss_v2_grad_chain_owner_a.md`
 
-判定：
-- 若梯度接近 0：优先归类为实现链路问题；
-- 若梯度正常但指标仍退化：归类为优化对抗或方法边界。
+结论口径：
+- 该检查用于排除“实现无效/梯度链断”的可能性；
+- 即便梯度链路正常，也**不等价于**“feature-loss 方案可行”，后续仍需结合指标退化判定为优化对抗或方法边界。
 
 ## 建议收口顺序（10 分钟版）
 
