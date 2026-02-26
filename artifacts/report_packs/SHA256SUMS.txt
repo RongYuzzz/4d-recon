@@ -15,3 +15,4 @@ fe3f13b1b112caa25ce491bbc94915f8b9217eca9817f9f3878a7553f5b5ed3b  artifacts/repo
 27a854c00a001217bfc7b77047c31fc0a28a2a64bc98d7d9e79090acb928bc75  artifacts/report_packs/report_pack_2026-02-26-v17.tar.gz
 bf1af1c52b68c8f0bd714580e322497e4bdecdcd162e313dcf7be14d709f68d9  artifacts/report_packs/report_pack_2026-02-26-v18.tar.gz
 b7ec19d28bedf758a2997aca64fd087c84f432b5a7e63d8fabfb5787b470117f  artifacts/report_packs/report_pack_2026-02-26-v19.tar.gz
+f90a839681a6d670fb40f360ae7a61ce8b93070eb44c49cf6127b0abbdb6a1f6  artifacts/report_packs/report_pack_2026-02-26-v20.tar.gz

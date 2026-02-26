@@ -41,11 +41,11 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 | baseline_smoke200 | 199 | 12.5889 | 0.2981 | 0.6277 | 0.08518 |
 | planb_init_smoke200 | 199 | 12.7610 | 0.3073 | 0.5839 | 0.03527 |
 
-结论：与 canonical/seg200_260 同向（PSNR 不劣化、LPIPS 下降、tLPIPS 大幅下降），可作为第三段 anti-cherrypick 辅证。
+结论：与 canonical/seg200_260 同向（PSNR 提升、LPIPS 下降、tLPIPS 大幅下降），可作为第三段 anti-cherrypick 防守位。
 
 ### 5) 预算纪律（必须写明）
 
-- 现阶段 full600 预算已用尽；后续若需要新增 full600，必须先新增决议（扩预算）后再执行。
+- 现阶段 full600 预算已用尽；后续若需要继续跑 full600，必须先新增决议（扩预算）后再执行。
 - 在无新决议前，仅允许 No-GPU 诊断、写作与证据链刷新，不新增训练预算。
 
 ## 答辩一句话（严格口径）

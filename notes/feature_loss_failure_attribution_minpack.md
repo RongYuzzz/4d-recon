@@ -47,25 +47,49 @@ python3 scripts/tests/test_token_proj_resize_alignment.py
 
 判定：`self-consistency` 与 `cache round-trip` 均 PASS，且对齐单测通过。
 
-## 3) 1–2px 平移敏感性（可选加分项）
+## 3) 1–2px 平移敏感性（已补齐，phi-space 口径）
 
-当前状态：仓库暂无独立脚本，建议作为无训练开销的附加诊断。
+实现脚本：
+- `scripts/analyze_phi_shift_sensitivity.py`
 
-最小实现思路：
-- 取同一帧 GT 图像 `I_gt`，构造 `(dx,dy) ∈ {(-2,-2)...(2,2)}` 的平移版本；
-- 通过与 cache 同一 `phi` 提取路径计算 `L_feat(shift(I_gt), I_gt)`；
-- 输出 `shift -> loss` 曲线，观察 1px 级别是否出现异常陡增。
+验证脚本：
+- `scripts/tests/test_analyze_phi_shift_sensitivity.py`
 
-## 4) Gating/Patch 命中率热图（待补/可选）
+执行命令（No-GPU）：
 
-当前状态：仓库暂无专用可视化脚本；可使用已存在数据源先完成统计版。
+```bash
+python3 scripts/analyze_phi_shift_sensitivity.py \
+  --cache_npz /root/autodl-tmp/projects/4d-recon/.worktrees/owner-a-20260226-v2-postfix/outputs/vggt_cache/selfcap_bar_8cam60f_token_proj_l17_d32_s20260225_f0_n60_cam8_ds4/gt_cache.npz \
+  --out_dir /root/autodl-tmp/projects/4d-recon/outputs/report_pack/diagnostics \
+  --max_shift 2
+```
 
-数据源：
-- `scripts/precompute_vggt_cache.py --save_framediff_gate` 会把 `gate_framediff` 写入 `gt_cache.npz`。
+证据路径（不入库）：
+- `outputs/report_pack/diagnostics/phi_shift_sensitivity.csv`
+- `outputs/report_pack/diagnostics/phi_shift_sensitivity.png`
 
-最小统计口径：
-- 统计每帧/每视角 gate 激活比例（mean of `gate_framediff`）；
-- 对 60 帧输出时序曲线，并抽样导出 2D 热图 PNG。
+说明：该项采用 **phi-space shift sensitivity**（对缓存 `phi` 做空间平移），用于证明“轻微错位会被特征损失放大”的趋势，不声称等价于 image-space shift。
+
+## 4) Gating/Patch 命中率热图（已补齐）
+
+实现脚本：
+- `scripts/analyze_vggt_gate_framediff.py`
+
+验证脚本：
+- `scripts/tests/test_analyze_vggt_gate_framediff.py`
+
+执行命令（No-GPU）：
+
+```bash
+python3 scripts/analyze_vggt_gate_framediff.py \
+  --cache_npz /root/autodl-tmp/projects/4d-recon/.worktrees/owner-a-20260226-v2-postfix/outputs/vggt_cache/selfcap_bar_8cam60f_token_proj_l17_d32_s20260225_f0_n60_cam8_ds4/gt_cache.npz \
+  --out_dir /root/autodl-tmp/projects/4d-recon/outputs/report_pack/diagnostics
+```
+
+证据路径（不入库）：
+- `outputs/report_pack/diagnostics/gate_framediff_mean_by_frame.csv`
+- `outputs/report_pack/diagnostics/gate_framediff_mean_by_view.csv`
+- `outputs/report_pack/diagnostics/gate_framediff_heatmap.png`
 
 ## 5) 梯度链检查（10 step 小跑）
 
