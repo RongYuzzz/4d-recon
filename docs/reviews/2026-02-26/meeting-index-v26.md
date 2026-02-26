@@ -2,6 +2,7 @@
 
 ## Start Here (2 min)
 - 首先阅读：
+  - `docs/reviews/2026-02-26/meeting-checklist-v26.md`
   - `docs/reviews/2026-02-26/meeting-handout-v26.md`
 - 该 handout 是会前统一口径单文件：结论、关键数字、播放顺序、证据入口都已收口。
 
