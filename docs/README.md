@@ -19,11 +19,13 @@
    - T0 审计结论与梯度检查口径。
 8. `docs/report_pack/`
    - 汇报材料快照（文本版，便于长期保存）。
-9. `docs/writing/planb_paper_outline.md`
+9. `docs/reviews/2026-02-26/meeting-index-v26.md` + `docs/reviews/2026-02-26/meeting-handout-v26.md`
+   - v26 会议入口总索引与单文件 handout（会前优先阅读）。
+10. `docs/writing/planb_paper_outline.md`
    - 写作骨架与证据路径索引（论文/答辩可直接复用）。
-10. `docs/writing/planb_onepager_v26.md` + `docs/writing/planb_talk_outline_v26.md` + `docs/writing/planb_qa_cards_v26.md`
+11. `docs/writing/planb_onepager_v26.md` + `docs/writing/planb_talk_outline_v26.md` + `docs/writing/planb_qa_cards_v26.md`
    - v26 冻结期会议写作三件套（一页纸/讲稿大纲/Q&A）。
-11. `artifacts/report_packs/`（本地）
+12. `artifacts/report_packs/`（本地）
    - 离线证据包 tarball（不进 git，建议另行备份）。
 
 `docs/plans/` 下是执行计划/分工记录：大多数已标注“存档”，用于追溯过程；`Next` 类计划则用于后续推进。
