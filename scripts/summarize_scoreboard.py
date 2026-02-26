@@ -222,6 +222,7 @@ def main() -> int:
     lines.append("")
     lines.append("## 风险提示")
     risk_lines: list[str] = []
+    risk_summary = "无法判断：缺少风险对照结论。"
     control = selected.get("control_weak_nocue_600")
     ours_weak = selected.get("ours_weak_600")
     missing_core: list[str] = []
@@ -232,7 +233,9 @@ def main() -> int:
 
     if missing_core:
         missing_fmt = "、".join(f"`{name}`" for name in missing_core)
-        lines.append(f"- 无法判断：缺少 {missing_fmt}。")
+        message = f"无法判断：缺少 {missing_fmt}。"
+        lines.append(f"- {message}")
+        risk_summary = message
     else:
         control_tlpips = _to_float(control.get("tlpips", ""))
         ours_tlpips = _to_float(ours_weak.get("tlpips", ""))
@@ -272,18 +275,43 @@ def main() -> int:
 
         if risk_lines:
             lines.extend(risk_lines)
+            risk_summary = "发现 `control_weak_nocue_600` 相对 `ours_weak_600` 的潜在负增益风险。"
         elif comparable:
-            lines.append("- 未发现 `control_weak_nocue_600` 优于 `ours_weak_600` 的风险信号。")
+            message = "未发现 `control_weak_nocue_600` 优于 `ours_weak_600` 的风险信号。"
+            lines.append(f"- {message}")
+            risk_summary = message
         else:
-            lines.append(
-                "- 无法判断：`control_weak_nocue_600` 与 `ours_weak_600` 缺少可比指标（tLPIPS/LPIPS/PSNR/SSIM）。"
-            )
+            message = "无法判断：`control_weak_nocue_600` 与 `ours_weak_600` 缺少可比指标（tLPIPS/LPIPS/PSNR/SSIM）。"
+            lines.append(f"- {message}")
+            risk_summary = message
+
+    best_psnr: tuple[str, float] | None = None
+    best_tlpips: tuple[str, float] | None = None
+    for run_name, row in selected.items():
+        psnr = _to_float(row.get("psnr", ""))
+        if psnr is not None:
+            if best_psnr is None or psnr > best_psnr[1] or (psnr == best_psnr[1] and run_name < best_psnr[0]):
+                best_psnr = (run_name, psnr)
+        tlpips = _to_float(row.get("tlpips", ""))
+        if tlpips is not None:
+            if (
+                best_tlpips is None
+                or tlpips < best_tlpips[1]
+                or (tlpips == best_tlpips[1] and run_name < best_tlpips[0])
+            ):
+                best_tlpips = (run_name, tlpips)
 
     lines.append("")
-    lines.append("## 结论要点（占位）")
-    lines.append("- 结论要点 1：TODO")
-    lines.append("- 结论要点 2：TODO")
-    lines.append("- 结论要点 3：TODO")
+    lines.append("## 结论要点（自动生成）")
+    if best_psnr is None:
+        lines.append("- PSNR 最优：无法判断（缺少可用 PSNR）。")
+    else:
+        lines.append(f"- PSNR 最优：`{best_psnr[0]}` ({best_psnr[1]:.4f})")
+    if best_tlpips is None:
+        lines.append("- tLPIPS 最优：无法判断（缺少可用 tLPIPS）。")
+    else:
+        lines.append(f"- tLPIPS 最优：`{best_tlpips[0]}` ({best_tlpips[1]:.4f})")
+    lines.append(f"- 风险提示：{risk_summary}")
     lines.append("")
 
     out_md.parent.mkdir(parents=True, exist_ok=True)

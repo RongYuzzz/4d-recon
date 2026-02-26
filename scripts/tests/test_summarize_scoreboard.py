@@ -318,8 +318,13 @@ def run_test() -> None:
             raise AssertionError("missing risk section")
         if "control_weak_nocue_600" not in md or "ours_weak_600" not in md:
             raise AssertionError("risk section should mention control vs ours_weak")
-        if "结论要点（占位）" not in md:
-            raise AssertionError("missing takeaway placeholders")
+        if "结论要点（自动生成）" not in md:
+            raise AssertionError("missing auto-generated takeaway section")
+        if "TODO" in md:
+            raise AssertionError("takeaways should not contain TODO placeholders")
+        for keyword in ("PSNR 最优", "tLPIPS 最优", "风险提示"):
+            if keyword not in md:
+                raise AssertionError(f"missing takeaway keyword: {keyword}")
 
         cmd_with_weak_v2 = common_cmd + [
             "--out_md",
