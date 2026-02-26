@@ -143,3 +143,44 @@ control_weak_nocue（test@step599, `cam09`）：
 
 结论（一句话）：
 - 在 seg2 上，`control_weak_nocue_600` 呈现“tLPIPS 改善、PSNR/SSIM 略升、LPIPS 微弱变差”的混合趋势，作为 anti-cherrypick 防守证据位已补齐。
+
+## 7) A55（planb_init_600 on seg2）结果（2026-02-26）
+
+前置条件：
+- Gate-S2（seg2 smoke200）PASS 后执行。
+
+命令：
+
+```bash
+cd /root/projects/4d-recon/.worktrees/owner-a-20260226-planb
+GPU=0 MAX_STEPS=600 \
+DATA_DIR=data/selfcap_bar_8cam60f_seg200_260 \
+PLANB_INIT_NPZ=outputs/plan_b/selfcap_bar_8cam60f_seg200_260/init_points_planb_step5.npz \
+RESULT_DIR=outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/planb_init_600 \
+bash scripts/run_train_planb_init_selfcap.sh
+```
+
+产物路径：
+- `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/planb_init_600/stats/test_step0599.json`
+- `outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/planb_init_600/videos/traj_4d_step599.mp4`
+
+test@step599（cam09）：
+- baseline_600:
+  - PSNR `18.0468`
+  - SSIM `0.6353`
+  - LPIPS `0.4138`
+  - tLPIPS `0.02343`
+- planb_init_600:
+  - PSNR `20.0417`
+  - SSIM `0.6656`
+  - LPIPS `0.3534`
+  - tLPIPS `0.00779`
+
+差值（planb_init_600 - baseline_600）：
+- ΔPSNR: `+1.9950`
+- ΔSSIM: `+0.0303`
+- ΔLPIPS: `-0.0604`（更好）
+- ΔtLPIPS: `-0.01564`（更好）
+
+一句话结论：
+- 在 seg2 上，`planb_init_600` 相比 `baseline_600` 呈现明显提升（PSNR/SSIM 上升、LPIPS/tLPIPS 下降），反 cherry-pick 证据进一步增强。
