@@ -125,6 +125,12 @@ def collect_files(repo_root: Path) -> list[Path]:
     if corr_dir.exists():
         files.update(p for p in corr_dir.glob("**/viz/*") if p.is_file())
 
+    # Plan-B qualitative audit: side-by-side videos and selected frame snapshots.
+    qual_dir = outputs / "qualitative" / "planb_vs_baseline"
+    if qual_dir.exists():
+        files.update(p for p in qual_dir.glob("*.mp4") if p.is_file())
+        files.update(p for p in (qual_dir / "frames").glob("frame_*.jpg") if p.is_file())
+
     excluded_tokens = {"ckpts", "tb", "renders"}
     filtered = []
     for p in sorted(files):

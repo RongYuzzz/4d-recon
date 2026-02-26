@@ -46,6 +46,13 @@ def run_test() -> None:
         (planb_dir / "velocity_stats.json").write_text('{"ok": true}\n', encoding="utf-8")
         (planb_dir / "init_points_planb_step5.npz").write_bytes(b"fake-npz")
 
+        # Qualitative side-by-side artifacts should be included when present.
+        qual_dir = root / "outputs" / "qualitative" / "planb_vs_baseline"
+        qual_frames = qual_dir / "frames"
+        qual_frames.mkdir(parents=True, exist_ok=True)
+        (qual_dir / "planb_vs_baseline_step599.mp4").write_bytes(b"fake-side-by-side")
+        (qual_frames / "frame_000000.jpg").write_bytes(b"fake-jpg")
+
         out_tar = root / "pack.tar.gz"
         cmd = [
             sys.executable,
@@ -74,6 +81,8 @@ def run_test() -> None:
             "outputs/plan_b/selfcap_bar_8cam60f/velocity_stats.json",
             "outputs/plan_b/selfcap_bar_8cam60f/init_points_planb_step5.npz",
             "outputs/correspondences/demo/viz/klt_pair.png",
+            "outputs/qualitative/planb_vs_baseline/planb_vs_baseline_step599.mp4",
+            "outputs/qualitative/planb_vs_baseline/frames/frame_000000.jpg",
             "git_rev.txt",
             "manifest_sha256.csv",
         }
