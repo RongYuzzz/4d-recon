@@ -1,22 +1,52 @@
 # 2026-02-26 Plan-B Qualitative 产物流程（No-GPU）
 
-目的：把 `baseline_600` 与 `planb_init_600` 的定性对比做成可复用命令，避免临场手工剪辑。
+目的：把 `baseline` 与 `planb_init` 的定性对比做成可复用命令，避免临场手工剪辑。
 
 ## 1) 生成 side-by-side 对比视频
 
-默认输入：
-- left: `outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600/videos/traj_4d_step599.mp4`
-- right: `outputs/protocol_v1/selfcap_bar_8cam60f/planb_init_600/videos/traj_4d_step599.mp4`
-
-命令：
+### 1.1 默认 selfcap_bar（full600）
 
 ```bash
 cd /root/projects/4d-recon
 bash scripts/make_side_by_side_video.sh --overwrite
 ```
 
-默认输出：
+输出：
 - `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_step599.mp4`
+
+### 1.2 seg200_260（full600）
+
+```bash
+cd /root/projects/4d-recon
+bash scripts/make_side_by_side_video.sh \
+  --left  outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/baseline_600/videos/traj_4d_step599.mp4 \
+  --right outputs/protocol_v1_seg200_260/selfcap_bar_8cam60f_seg200_260/planb_init_600/videos/traj_4d_step599.mp4 \
+  --out_dir outputs/qualitative/planb_vs_baseline \
+  --out_name planb_vs_baseline_seg200_260_step599.mp4 \
+  --left_label baseline_seg200_260_600 \
+  --right_label planb_seg200_260_600 \
+  --overwrite
+```
+
+输出：
+- `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg200_260_step599.mp4`
+
+### 1.3 seg400_460（smoke200）
+
+```bash
+cd /root/projects/4d-recon
+bash scripts/make_side_by_side_video.sh \
+  --left  outputs/protocol_v1_seg400_460/selfcap_bar_8cam60f_seg400_460/baseline_smoke200/videos/traj_4d_step199.mp4 \
+  --right outputs/protocol_v1_seg400_460/selfcap_bar_8cam60f_seg400_460/planb_init_smoke200/videos/traj_4d_step199.mp4 \
+  --out_dir outputs/qualitative/planb_vs_baseline \
+  --out_name planb_vs_baseline_seg400_460_step199.mp4 \
+  --left_label baseline_seg400_460_smoke200 \
+  --right_label planb_seg400_460_smoke200 \
+  --overwrite
+```
+
+输出：
+- `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg400_460_step199.mp4`
 
 可选参数：
 - `--left/--right`：自定义输入视频
@@ -52,3 +82,4 @@ bash scripts/extract_video_frames.sh \
 
 - 不提交 `outputs/qualitative/` 下的视频与图片。
 - 只提交脚本与文档，保证流程可复现。
+- 保持输出路径为 `outputs/qualitative/planb_vs_baseline/*.mp4` 时，这些 mp4 会被 `scripts/pack_evidence.py` 自动收录到 evidence tar。
