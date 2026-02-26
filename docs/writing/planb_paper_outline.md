@@ -20,6 +20,7 @@
 - 结论：canonical 主表中，Plan-B 在 PSNR 提升同时降低 LPIPS/tLPIPS。证据：`docs/report_pack/2026-02-26-v26/scoreboard.md`。
 - 结论：seg200_260/seg400_460/seg600_660/seg300_360/seg1800_1860 方向一致，支持“非 cherry-pick”防守。证据：`docs/report_pack/2026-02-26-v26/planb_anticherrypick.md`、`notes/anti_cherrypick_seg1800_1860.md`。
 - 结论：写作中正文只放 canonical 主表，seg 结果放附录作为稳健性支撑。证据：`docs/report_pack/2026-02-26-v26/metrics.csv`、`docs/report_pack/2026-02-26-v26/planb_anticherrypick.md`。
+- 结论：Table-1 的会议版整理入口为 `notes/planb_table1_v26_owner_a.md`；数值真源仍以 `docs/report_pack/2026-02-26-v26/*` 为准。
 - 结论：在 `planb_init` 框架下，cue 风险在 smoke200 仍需谨慎处理（收益幅度有限且 tLPIPS 未同向改善）。证据：`docs/report_pack/2026-02-26-v26/metrics.csv`、`docs/decisions/2026-02-26-planb-v26-freeze.md`。
 
 ## Scope 与 Limitations（冻结口径）

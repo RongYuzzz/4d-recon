@@ -9,6 +9,7 @@
 - Slide 2（seg200_260，约 90s）：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg200_260_step599.mp4`。
 - Slide 3（可选其一，约 60-90s）：推荐 `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg400_460_step199.mp4`。
 - 讲法：只讲“同向改善”与“先看视觉，再看数字”，不展开机制争论。
+- 主图与抽帧索引：`notes/planb_qualitative_frames_v26_owner_a.md`。
 
 ## 2) 再给主表 Table 1（4:30-7:00）
 - Slide 4（canonical full600）：

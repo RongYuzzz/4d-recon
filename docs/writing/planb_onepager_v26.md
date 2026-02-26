@@ -46,8 +46,8 @@
 - 必播 2：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg200_260_step599.mp4`（seg200_260）。
 - 任选 1：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg400_460_step199.mp4`（或 seg300/600/1800 任一 smoke200）。
 
-## Owner A 接入口（不阻塞，TODO 占位）
-- TODO（若到位则合并）：`notes/planb_v26_audit_owner_a.md`
-- TODO（若到位则合并）：`notes/planb_table1_v26_owner_a.md`
-- TODO（若到位则合并）：`notes/planb_qualitative_frames_v26_owner_a.md`
-- TODO（若到位则合并）：`notes/handoff_planb_v26_assets_owner_a.md`
+## Owner A 接入口（已接线）
+- 审计摘要：`notes/planb_v26_audit_owner_a.md`
+- Table-1 摘要表：`notes/planb_table1_v26_owner_a.md`
+- 定性主图/抽帧索引：`notes/planb_qualitative_frames_v26_owner_a.md`
+- 资产与使用说明：`notes/handoff_planb_v26_assets_owner_a.md`
