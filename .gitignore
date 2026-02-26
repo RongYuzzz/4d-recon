@@ -24,6 +24,7 @@ outputs/*
 
 # Local artifacts (evidence packs, large binaries)
 artifacts/report_packs/*.tar.gz
+artifacts/meeting_assets/*.tar.gz
 
 # Logs / temp
 *.log
