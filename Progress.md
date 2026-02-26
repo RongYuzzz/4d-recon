@@ -1,11 +1,11 @@
 # 4d-recon 项目进度（Progress）
 
-最后更新：2026-02-25  
+最后更新：2026-02-26  
 对照执行计划：`docs/execution/2026-02-12-4d-reconstruction-execution.md`
 
 ## 0. 当前状态（一句话）
 
-已完成 **协议 v1 冻结 + A/B 双人接管**；A 已在最新 `origin/main`（含 `d1b95b2` + `a859078`）完成 **Feature-Loss v2 post-fix 复核**：M1 PASS（含 lambda sweep）后执行 1 次 full600 主判据，结论为 **No-Go（未形成优于 baseline/control 的可辩护趋势）**，并按规则停止第 2 次 gated full600。
+已完成 **协议 v1 冻结 + Plan‑B pivot（3D velocity init）**；Plan‑B 在 canonical 与 seg200_260（anti‑cherrypick）两段均显著优于 baseline（尤其 tLPIPS 大幅下降），feature-loss v2 主线继续冻结；未来 7 天 full600 预算（N=3）已用尽，进入 Writing Mode 收口与防守材料完善。
 
 ## 1. 与原执行计划的关键差异（已记录且可辩护）
 
@@ -43,15 +43,20 @@
 
 ## 4. 当前结果摘要（Protocol v1，test@step599）
 
-来源：`docs/report_pack/2026-02-25-v13/metrics.csv`
+来源：`docs/report_pack/2026-02-26-v17/metrics.csv`
 
 | 运行 | PSNR | SSIM | LPIPS | tLPIPS | 备注 |
 |---|---:|---:|---:|---:|---|
 | baseline_600 | 18.9496 | 0.6653 | 0.4048 | 0.0230 | canonical baseline |
 | ours_weak_600 | 19.0194 | 0.6661 | 0.4037 | 0.0231 | diff cue（当前默认） |
 | control_weak_nocue_600 | 19.1099 | 0.6674 | 0.4033 | 0.0236 | control 目前最好（提示 cue 仍需改进） |
+| planb_init_600 | 20.4488 | 0.7070 | 0.3497 | 0.0072 | **Plan‑B（主线 Go）** |
 | ours_strong_v3_gate1_detach0_predpred_600 | 18.9491 | 0.6652 | 0.4072 | 0.0228 | strong v3：tLPIPS 有小幅改善但 LPIPS/PSNR 退化，已 stoploss |
 | ours_weak_vggt_w0.3_end200_600 | 18.9808 | 0.6651 | 0.4047 | 0.0245 | VGGT probe：无稳定收益，不建议 protocol_v2 |
+
+补充（seg200_260 anti‑cherrypick，test@599）：
+- seg2 baseline_600：PSNR `18.0468` / SSIM `0.6353` / LPIPS `0.4138` / tLPIPS `0.02343`
+- seg2 planb_init_600：PSNR `20.0417` / SSIM `0.6656` / LPIPS `0.3534` / tLPIPS `0.00779`
 
 ## 5. 对照执行计划：Task 1–11 完成情况
 
@@ -73,20 +78,19 @@
 
 ## 6. 当前待办（按优先级）
 
-- weak 主线风险仍在：
-  - `control_weak_nocue_600` 仍优于 `ours_weak_600`，需要更合理 cue / 注入策略。
-- strong 主线已冻结：
-  - `ours_strong_v3_gate1_detach0_predpred_600` 触发 stoploss（trade-off 不可接受），暂不扩展算力。
-- 下一步负责人（B）：
-  - 继续“weak 的更合理 cue/注入”或“更强但可解释的 strong”探索，参考 `docs/plans/2026-02-25-owner-b-strong-v3-gated-corr-stoploss.md`。
+- Writing Mode（优先）：
+  - 输出定性对比（side-by-side + 抽帧）：`docs/execution/2026-02-26-planb-qualitative.md`
+  - 强化 negative result 防守：`notes/feature_loss_v2_failure_attribution_owner_b.md`
+- weak 主线风险仍在（作为“方法边界/负增益”证据位保留）：
+  - `control_weak_nocue_600` 在 LPIPS 上优于 `ours_weak_600`（见 `docs/report_pack/2026-02-26-v17/scoreboard.md` 风险提示）
+- 后续若要继续新增 full600：必须新建决议文件扩预算（否则不可比/不可审计）。
 
 ## 7. 2026-02-24 评审拍板（对后续计划的影响）
 
 评审材料已收敛至：`docs/reviews/2026-02-24/`
 
 - `02-25`（protocol v1）不大改：KLT strong 明确降级为 baseline/attempt；weak “无稳定收益（control 更好）”作为关键发现。
-- `02-26+` 唯一主线：VGGT **feature metric loss**（离线 GT cache + 训练时低频/低分辨率/patch）。
-- Plan‑B（触发式救火开关，不并行）：triangulation→粗 3D velocity 初始化，48h timebox。
+- `02-26+` 唯一主线已改为 **Plan‑B**（见 `docs/decisions/2026-02-26-planb-pivot.md`）：triangulation→3D velocity init，48h timebox；feature-loss 主线冻结。
 - 强制新增两页诊断证据：`||v||` 分布统计 + cue 对齐 overlay（用于防守“zero velocity 死路”等攻击点）。
 
 ## 8. 2026-02-25 Feature-Loss v2 复跑闭环（Owner A，pre-fix 证据）
@@ -151,3 +155,17 @@ M2（选择性 full600）：
 - 脚本：`scripts/init_velocity_from_points.py`
 - runner：`scripts/run_train_planb_init_selfcap.sh`
 - 执行文档：`docs/execution/2026-02-26-planb.md`
+
+执行结果（已闭环）：
+- canonical：`planb_init_600` 相对 `baseline_600`：
+  - ΔPSNR `+1.4992`，ΔLPIPS `-0.0551`，ΔtLPIPS `-0.0158`
+- seg200_260：`planb_init_600` 相对 `baseline_600`：
+  - ΔPSNR `+1.9950`，ΔLPIPS `-0.0604`，ΔtLPIPS `-0.01564`
+- 证据快照：`docs/report_pack/2026-02-26-v17/`
+- 关键记录：
+  - `notes/planb_gate_b1_owner_a.md`、`notes/planb_gate_b2_owner_a.md`
+  - `notes/planb_seg2_gate_s1_owner_a.md`、`notes/planb_seg2_gate_s2_owner_a.md`
+  - `notes/anti_cherrypick_seg200_260.md`
+  - `notes/planb_verdict_writeup_owner_b.md`
+
+预算状态（7 天 full600，N=3）：已用尽（剩余 0）。
