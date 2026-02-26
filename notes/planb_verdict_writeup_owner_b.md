@@ -32,6 +32,17 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 
 用法：正文以 canonical 为主结论，seg2 结果放附录作为 anti-cherrypick 防守证据。
 
+### 4) seg400_460 smoke200（状态与口径）
+
+- 本次 v18 刷新时，`outputs/protocol_v1_seg400_460/selfcap_bar_8cam60f_seg400_460/planb_init_smoke200/` 尚未落地。
+- 因此当前文稿对 seg400_460 仅保留“待补证据位”声明，不做数值结论。
+- 一旦产物到位，按与 seg200_260 相同口径补一张 smoke200 对照表（baseline vs planb）。
+
+### 5) 预算纪律（必须写明）
+
+- 现阶段 full600 预算已用尽；后续若需要新增 full600，必须先新增决议（扩预算）后再执行。
+- 在无新决议前，仅允许 No-GPU 诊断、写作与证据链刷新，不新增训练预算。
+
 ## 答辩一句话（严格口径）
 
 Plan-B 解决的不是“速度是否为 0”，而是 **velocity prior 的质量/尺度/一致性不足或噪声过大** 导致的动态重建不稳。
