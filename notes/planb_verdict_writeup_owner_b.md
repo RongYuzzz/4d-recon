@@ -51,3 +51,8 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 ## 答辩一句话（严格口径）
 
 Plan-B 解决的不是“速度是否为 0”，而是 **velocity prior 的质量/尺度/一致性不足或噪声过大** 导致的动态重建不稳。
+
+## Plan-B + weak（smoke200）补充结论
+
+- 三行对比：`planb_init_smoke200` / `planb_control_weak_nocue_smoke200` / `planb_ours_weak_smoke200_w0.3_end200`。
+- 结论口径：以 `notes/planb_plus_weak_smoke200_owner_a.md` 与 `outputs/report_pack/planb_plus_weak_smoke200.md` 为准，当前证据不支持直接申请新增 1 次 full600。
