@@ -83,6 +83,7 @@
   - 强化 negative result 防守：`notes/feature_loss_v2_failure_attribution_owner_b.md`
 - weak 主线风险仍在（作为“方法边界/负增益”证据位保留）：
   - `control_weak_nocue_600` 在 LPIPS 上优于 `ours_weak_600`（见 `docs/report_pack/2026-02-26-v17/scoreboard.md` 风险提示）
+  - `planb_ours_weak_smoke200_w0.3_end200` 相对 `planb_init_smoke200` 仅微弱改善（ΔPSNR `+0.0056` / ΔLPIPS `-0.0003` / ΔtLPIPS `+0.00025`），结论 `No-Go`，暂不申请新增 full600（见 `notes/planb_plus_weak_smoke200_owner_a.md`）
 - 后续若要继续新增 full600：必须新建决议文件扩预算（否则不可比/不可审计）。
 
 ## 7. 2026-02-24 评审拍板（对后续计划的影响）
