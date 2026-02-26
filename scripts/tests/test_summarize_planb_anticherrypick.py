@@ -23,27 +23,52 @@ def _section_text(md: str, heading: str) -> str:
     return md[start:end]
 
 
+def _render_markdown(rows: list[dict[str, str]], root: Path) -> str:
+    metrics_csv = root / "outputs" / "report_pack" / "metrics.csv"
+    out_md = root / "outputs" / "report_pack" / "planb_anticherrypick.md"
+    metrics_csv.parent.mkdir(parents=True, exist_ok=True)
+
+    fieldnames = [
+        "run_dir",
+        "gate",
+        "dataset",
+        "stage",
+        "step",
+        "psnr",
+        "ssim",
+        "lpips",
+        "tlpips",
+        "num_gs",
+        "notes",
+    ]
+    with metrics_csv.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    cmd = [
+        sys.executable,
+        str(SCRIPT),
+        "--metrics_csv",
+        str(metrics_csv.relative_to(REPO_ROOT)),
+        "--out_md",
+        str(out_md.relative_to(REPO_ROOT)),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "summarize_planb_anticherrypick failed:\n"
+            f"{proc.stdout}\n{proc.stderr}"
+        )
+    if not out_md.exists():
+        raise AssertionError("planb_anticherrypick markdown missing")
+    return out_md.read_text(encoding="utf-8")
+
+
 def run_test() -> None:
     with tempfile.TemporaryDirectory(prefix="planb_anticherry_", dir=REPO_ROOT) as td:
         root = Path(td)
-        metrics_csv = root / "outputs" / "report_pack" / "metrics.csv"
-        out_md = root / "outputs" / "report_pack" / "planb_anticherrypick.md"
-        metrics_csv.parent.mkdir(parents=True, exist_ok=True)
-
-        fieldnames = [
-            "run_dir",
-            "gate",
-            "dataset",
-            "stage",
-            "step",
-            "psnr",
-            "ssim",
-            "lpips",
-            "tlpips",
-            "num_gs",
-            "notes",
-        ]
-        rows = [
+        common_rows = [
             {
                 "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/baseline_600",
                 "gate": "",
@@ -123,34 +148,75 @@ def run_test() -> None:
                 "notes": "",
             },
         ]
-        with metrics_csv.open("w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
-
-        cmd = [
-            sys.executable,
-            str(SCRIPT),
-            "--metrics_csv",
-            str(metrics_csv.relative_to(REPO_ROOT)),
-            "--out_md",
-            str(out_md.relative_to(REPO_ROOT)),
+        seg600_rows = [
+            {
+                "run_dir": "outputs/protocol_v1_seg600_660/selfcap_bar_8cam60f_seg600_660/baseline_smoke200",
+                "gate": "",
+                "dataset": "selfcap_bar_8cam60f_seg600_660",
+                "stage": "test",
+                "step": "199",
+                "psnr": "8.9",
+                "ssim": "0.39",
+                "lpips": "0.400",
+                "tlpips": "0.033",
+                "num_gs": "90",
+                "notes": "",
+            },
+            {
+                "run_dir": "outputs/protocol_v1_seg600_660/selfcap_bar_8cam60f_seg600_660/planb_init_smoke200",
+                "gate": "",
+                "dataset": "selfcap_bar_8cam60f_seg600_660",
+                "stage": "test",
+                "step": "199",
+                "psnr": "9.3",
+                "ssim": "0.42",
+                "lpips": "0.370",
+                "tlpips": "0.029",
+                "num_gs": "96",
+                "notes": "",
+            },
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
-        if proc.returncode != 0:
-            raise RuntimeError(
-                "summarize_planb_anticherrypick failed:\n"
-                f"{proc.stdout}\n{proc.stderr}"
-            )
-        if not out_md.exists():
-            raise AssertionError("planb_anticherrypick markdown missing")
 
-        md = out_md.read_text(encoding="utf-8")
-        for heading in ("Canonical", "seg200_260", "seg400_460"):
+        md = _render_markdown(common_rows + seg600_rows, root)
+        for heading in ("Canonical", "seg200_260", "seg400_460", "seg600_660"):
             section = _section_text(md, heading)
             for token in ("ΔPSNR", "ΔLPIPS", "ΔtLPIPS"):
                 if token not in section:
                     raise AssertionError(f"missing token {token} in section {heading}")
+
+        seg300_rows = [
+            {
+                "run_dir": "outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_smoke200",
+                "gate": "",
+                "dataset": "selfcap_bar_8cam60f_seg300_360",
+                "stage": "test",
+                "step": "199",
+                "psnr": "8.8",
+                "ssim": "0.39",
+                "lpips": "0.401",
+                "tlpips": "0.034",
+                "num_gs": "90",
+                "notes": "",
+            },
+            {
+                "run_dir": "outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/planb_init_smoke200",
+                "gate": "",
+                "dataset": "selfcap_bar_8cam60f_seg300_360",
+                "stage": "test",
+                "step": "199",
+                "psnr": "9.0",
+                "ssim": "0.40",
+                "lpips": "0.390",
+                "tlpips": "0.031",
+                "num_gs": "95",
+                "notes": "",
+            },
+        ]
+        md_fallback = _render_markdown(common_rows + seg300_rows, root)
+        section = _section_text(md_fallback, "seg300_360 (fallback)")
+        for token in ("ΔPSNR", "ΔLPIPS", "ΔtLPIPS"):
+            if token not in section:
+                raise AssertionError(f"missing token {token} in fallback section")
 
 
 if __name__ == "__main__":
@@ -159,4 +225,4 @@ if __name__ == "__main__":
     except Exception as exc:  # noqa: BLE001
         print(f"FAIL: {exc}")
         sys.exit(1)
-    print("PASS: summarize_planb_anticherrypick renders 3 sections with deltas")
+    print("PASS: summarize_planb_anticherrypick renders seg sections with deltas and fallback")

@@ -48,6 +48,37 @@ bash scripts/make_side_by_side_video.sh \
 输出：
 - `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg400_460_step199.mp4`
 
+### 1.4 seg600_660（smoke200）
+
+```bash
+cd /root/projects/4d-recon
+bash scripts/make_side_by_side_video.sh \
+  --left  outputs/protocol_v1_seg600_660/selfcap_bar_8cam60f_seg600_660/baseline_smoke200/videos/traj_4d_step199.mp4 \
+  --right outputs/protocol_v1_seg600_660/selfcap_bar_8cam60f_seg600_660/planb_init_smoke200/videos/traj_4d_step199.mp4 \
+  --out_dir outputs/qualitative/planb_vs_baseline \
+  --out_name planb_vs_baseline_seg600_660_step199.mp4 \
+  --left_label baseline_seg600_660_smoke200 \
+  --right_label planb_seg600_660_smoke200 \
+  --overwrite
+```
+
+输出：
+- `outputs/qualitative/planb_vs_baseline/planb_vs_baseline_seg600_660_step199.mp4`
+
+fallback（A 改跑 `seg300_360` 时）：
+
+```bash
+cd /root/projects/4d-recon
+bash scripts/make_side_by_side_video.sh \
+  --left  outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_smoke200/videos/traj_4d_step199.mp4 \
+  --right outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/planb_init_smoke200/videos/traj_4d_step199.mp4 \
+  --out_dir outputs/qualitative/planb_vs_baseline \
+  --out_name planb_vs_baseline_seg300_360_step199.mp4 \
+  --left_label baseline_seg300_360_smoke200 \
+  --right_label planb_seg300_360_smoke200 \
+  --overwrite
+```
+
 可选参数：
 - `--left/--right`：自定义输入视频
 - `--left_label/--right_label`：覆盖画面左上角标签
