@@ -80,3 +80,33 @@ Expected total playback time for the 3 clips is about 5 seconds (plus presenter 
 This plan only repackages existing qualitative outputs.  
 No new training was run, and no metric/protocol definition was changed.
 
+## 6) Optional slices (loop12s, anti-cherrypick follow-up)
+
+Generated loop clips (h264, 12s) under:
+`outputs/qualitative/planb_vs_baseline/clips_v26_looped/`
+
+- `planb_vs_baseline_seg300_360_step199_loop12s_h264.mp4`
+- `planb_vs_baseline_seg600_660_step199_loop12s_h264.mp4`
+- `planb_vs_baseline_seg1800_1860_step199_loop12s_h264.mp4`
+
+Generated freeze-frame covers under:
+`outputs/qualitative/planb_vs_baseline/clips_v26_looped/covers/`
+
+- `planb_vs_baseline_seg300_360_step199_loop12s_h264_t6.jpg`
+- `planb_vs_baseline_seg600_660_step199_loop12s_h264_t6.jpg`
+- `planb_vs_baseline_seg1800_1860_step199_loop12s_h264_t6.jpg`
+
+Use: on-demand backup evidence when anti-cherrypick questions target segments beyond canonical/seg200_260/seg400_460.
+
+## 7) Offline bundle (local only, non-git artifact)
+
+- Bundle path: `artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`
+- SHA256:
+  `89a17a3ad9987e006385aaaee3c25fa00f6e5c4fe3ff53491d7bb705957826e4`
+
+Verification commands:
+
+```bash
+sha256sum artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz
+tar -tzf artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz | head -n 30
+```
