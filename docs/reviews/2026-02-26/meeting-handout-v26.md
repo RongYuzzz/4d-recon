@@ -47,6 +47,7 @@
 - `docs/report_pack/2026-02-26-v26/manifest_sha256.csv`
 - 离线证据包：`artifacts/report_packs/report_pack_2026-02-26-v26.tar.gz`
 - SHA 索引来源：`artifacts/report_packs/SHA256SUMS.txt` 第 24 行
+- Offline bundle (local-only, 若存在)：`artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`；SHA 真源：`notes/planb_meeting_assets_v26_owner_a.md`；校验：`sha256sum artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`
 
 ## 7) Q&A 入口
 - `docs/writing/planb_qa_cards_v26.md`

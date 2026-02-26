@@ -13,7 +13,6 @@
 ## 3) 数字真源（v26 report-pack 四件套）
 - 在仓库根目录执行：
 ```bash
-cd /root/projects/4d-recon
 for p in \
   docs/report_pack/2026-02-26-v26/metrics.csv \
   docs/report_pack/2026-02-26-v26/scoreboard.md \
@@ -26,7 +25,6 @@ done
 ## 4) evidence tar SHA（rg + sha256sum）
 - 会前核对离线证据包：
 ```bash
-cd /root/projects/4d-recon
 rg -n "report_pack_2026-02-26-v26.tar.gz" artifacts/report_packs/SHA256SUMS.txt
 expected=$(rg "report_pack_2026-02-26-v26.tar.gz" artifacts/report_packs/SHA256SUMS.txt | awk '{print $1}')
 actual=$(sha256sum artifacts/report_packs/report_pack_2026-02-26-v26.tar.gz | awk '{print $1}')
@@ -47,3 +45,8 @@ test "$expected" = "$actual" && echo "[OK] tar SHA match" || echo "[MISMATCH] ta
 - 不要现场跑实验，不要启动任何训练任务。
 - 不要生成新的 report-pack vXX，不要改数字口径与协议定义。
 - 只引用 v26 现有证据链与已登记 SHA，避免临场新增“新结果”。
+
+## Optional) Offline Bundle Check（local-only）
+- 若本地存在 bundle，则执行：`sha256sum artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`。
+- 路径：`artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`（仅本地物料，不入库）。
+- SHA 真源：`notes/planb_meeting_assets_v26_owner_a.md`。

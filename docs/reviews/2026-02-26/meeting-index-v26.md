@@ -11,6 +11,7 @@
 - `docs/writing/planb_qa_cards_v26.md`
 - `notes/planb_meeting_assets_v26_owner_a.md`
 - `notes/planb_meeting_runbook_v26_owner_a.md`
+- Offline bundle (local-only, 若存在)：`artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`；SHA 真源：`notes/planb_meeting_assets_v26_owner_a.md`；校验：`sha256sum artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`
 - 播放策略：若 `outputs/qualitative/planb_vs_baseline/clips_v26_looped/` 存在，优先使用 loop12s 版本。
 
 ## Evidence Source of Truth

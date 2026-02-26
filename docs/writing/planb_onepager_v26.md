@@ -40,6 +40,7 @@
 - `docs/report_pack/2026-02-26-v26/manifest_sha256.csv`
 - 离线 tar：`artifacts/report_packs/report_pack_2026-02-26-v26.tar.gz`
 - SHA 来源：`artifacts/report_packs/SHA256SUMS.txt` 第 24 行（`43e04974f95d4628c02cc7b65e5fbf44db4fd82329e306ec082a57dd90102536`）。
+- Offline bundle (local-only, 若存在)：`artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`；SHA 真源：`notes/planb_meeting_assets_v26_owner_a.md`；校验：`sha256sum artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`
 
 ## 8) 会议播放清单（先视频后数字）
 - 必播 1：`outputs/qualitative/planb_vs_baseline/planb_vs_baseline_step599.mp4`（canonical）。
