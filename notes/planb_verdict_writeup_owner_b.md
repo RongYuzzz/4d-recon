@@ -8,7 +8,7 @@
 
 ## Template Hygiene 声明（防守句）
 
-为排除“模板来自 canonical”的质疑，我们对 seg400_460 与 seg1800_1860 重做了 template hygiene：使用该 slice 自己的 baseline init（positions/colors/times/durations）作为模板，仅替换 velocities，并重跑 planb_init_smoke200；v25 以 re-template 后的结果为准。
+为排除“模板来自 canonical”的质疑，我们对 seg400_460 与 seg1800_1860 重做了 template hygiene：使用该 slice 自己的 baseline init（positions/colors/times/durations）作为模板，仅替换 velocities，并重跑 planb_init_smoke200；v26 以 re-template 后的结果为准。
 
 ## 三段式写作口径（可直接贴到 slides）
 
@@ -43,9 +43,9 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 | Run | Step | PSNR | SSIM | LPIPS | tLPIPS |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | baseline_smoke200 | 199 | 12.5889 | 0.2981 | 0.6277 | 0.08518 |
-| planb_init_smoke200 | 199 | 12.7610 | 0.3073 | 0.5839 | 0.03527 |
+| planb_init_smoke200 | 199 | 12.7733 | 0.3079 | 0.5796 | 0.0336 |
 
-结论：与 canonical/seg200_260 同向（PSNR 提升、LPIPS 下降、tLPIPS 大幅下降），可作为第三段 anti-cherrypick 防守位。
+结论：与 canonical/seg200_260 同向（ΔPSNR `+0.1845`、ΔLPIPS `-0.0481`、ΔtLPIPS `-0.0516`），可作为第三段 anti-cherrypick 防守位。
 
 ### 5) seg600_660 smoke200（新增防守位）
 
@@ -56,7 +56,7 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 | baseline_smoke200 | 199 | 12.5847 | 0.6268 | 0.0864 |
 | planb_init_smoke200 | 199 | 12.7752 | 0.5779 | 0.0339 |
 
-结论：与 canonical/seg200_260/seg400_460 同向（ΔPSNR `+0.1905`、ΔLPIPS `-0.0488`、ΔtLPIPS `-0.0525`），可作为第四段 anti-cherrypick 防守位。证据路径：`docs/report_pack/2026-02-26-v24/planb_anticherrypick.md`、`notes/anti_cherrypick_seg600_660.md`。
+结论：与 canonical/seg200_260/seg400_460 同向（ΔPSNR `+0.1905`、ΔLPIPS `-0.0488`、ΔtLPIPS `-0.0525`），可作为第四段 anti-cherrypick 防守位。证据路径：`docs/report_pack/2026-02-26-v26/planb_anticherrypick.md`、`notes/anti_cherrypick_seg600_660.md`。
 
 ### 6) seg1800_1860 smoke200（新增防守位）
 
@@ -65,9 +65,9 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 | Run | Step | PSNR | LPIPS | tLPIPS |
 | --- | ---: | ---: | ---: | ---: |
 | baseline_smoke200 | 199 | 12.5796 | 0.6290 | 0.0888 |
-| planb_init_smoke200 | 199 | 12.7081 | 0.5845 | 0.0356 |
+| planb_init_smoke200 | 199 | 12.7595 | 0.5801 | 0.0340 |
 
-结论：与 canonical/seg200_260/seg400_460/seg600_660 同向（ΔPSNR `+0.1285`、ΔLPIPS `-0.0445`、ΔtLPIPS `-0.0533`），可作为第五段 anti-cherrypick 防守位。证据路径：`docs/report_pack/2026-02-26-v24/planb_anticherrypick.md`、`notes/anti_cherrypick_seg1800_1860.md`。
+结论：与 canonical/seg200_260/seg400_460/seg600_660 同向（ΔPSNR `+0.1799`、ΔLPIPS `-0.0489`、ΔtLPIPS `-0.0549`），可作为第五段 anti-cherrypick 防守位。证据路径：`docs/report_pack/2026-02-26-v26/planb_anticherrypick.md`、`notes/anti_cherrypick_seg1800_1860.md`。
 
 ### 7) 预算纪律（必须写明）
 
