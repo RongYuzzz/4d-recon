@@ -162,11 +162,12 @@ M2（选择性 full600）：
 - seg200_260：`planb_init_600` 相对 `baseline_600`：
   - ΔPSNR `+1.9950`，ΔLPIPS `-0.0604`，ΔtLPIPS `-0.01564`
 - seg400_460（smoke200，budget-neutral）：`planb_init_smoke200` 相对 `baseline_smoke200`：ΔPSNR `+0.1721`，ΔLPIPS `-0.0438`，ΔtLPIPS `-0.04990`（与 canonical/seg200_260 同向，Gate-S2 PASS）
-- 证据快照：`docs/report_pack/2026-02-26-v17/`
+- 证据快照：`docs/report_pack/2026-02-26-v19/`
 - 关键记录：
   - `notes/planb_gate_b1_owner_a.md`、`notes/planb_gate_b2_owner_a.md`
   - `notes/planb_seg2_gate_s1_owner_a.md`、`notes/planb_seg2_gate_s2_owner_a.md`
   - `notes/anti_cherrypick_seg200_260.md`
+  - `notes/anti_cherrypick_seg400_460.md`
   - `notes/planb_verdict_writeup_owner_b.md`
 
 预算状态（7 天 full600，N=3）：已用尽（剩余 0）。

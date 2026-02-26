@@ -32,11 +32,16 @@ Plan-B 是“物理一致初始化修正”：以 triangulation 的跨帧 3D 差
 
 用法：正文以 canonical 为主结论，seg2 结果放附录作为 anti-cherrypick 防守证据。
 
-### 4) seg400_460 smoke200（状态与口径）
+### 4) seg400_460 smoke200（budget-neutral 防守位）
 
-- 本次 v18 刷新时，`outputs/protocol_v1_seg400_460/selfcap_bar_8cam60f_seg400_460/planb_init_smoke200/` 尚未落地。
-- 因此当前文稿对 seg400_460 仅保留“待补证据位”声明，不做数值结论。
-- 一旦产物到位，按与 seg200_260 相同口径补一张 smoke200 对照表（baseline vs planb）。
+说明：seg400_460 仅补 **smoke200（test@step199）**，不新增 full600（budget-neutral）。
+
+| Run | Step | PSNR | SSIM | LPIPS | tLPIPS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline_smoke200 | 199 | 12.5889 | 0.2981 | 0.6277 | 0.08518 |
+| planb_init_smoke200 | 199 | 12.7610 | 0.3073 | 0.5839 | 0.03527 |
+
+结论：与 canonical/seg200_260 同向（PSNR 不劣化、LPIPS 下降、tLPIPS 大幅下降），可作为第三段 anti-cherrypick 辅证。
 
 ### 5) 预算纪律（必须写明）
 
