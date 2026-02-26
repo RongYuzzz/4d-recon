@@ -134,3 +134,22 @@
   - `scripts/run_train_baseline_selfcap.sh`
   - `scripts/run_train_ours_weak_selfcap.sh`
   - 默认协议 full run：`GPU=0`、`MAX_STEPS=600`、`RENDER_TRAJ_PATH=fixed`（短跑 sanity 可用 `MAX_STEPS=200` 覆盖）。
+
+## 2026-02-26
+
+### 路线拍板：从 feature-loss v2 切换到 Plan‑B，并进入 Writing Mode
+- 触发：canonical 下 `feature-loss v2` full600 三项全劣化，主线 No‑Go。
+- 决议文件：`docs/decisions/2026-02-26-planb-pivot.md`
+- 依据材料（早期版本）：
+  - `docs/reviews/2026-02-26/meeting-opinions.md`
+  - `docs/reviews/2026-02-26/meeting-decision.md`
+
+### v26 会议收口：Plan‑B only + 冻结训练（新增 full600 预算 N=0）
+- 目标：把“拍板”写成可执行纪律，避免口径漂移与证据链被打散。
+- 决议文件（最新）：`docs/decisions/2026-02-26-planb-v26-freeze.md`
+- 依据材料（v26 强化版）：
+  - `docs/reviews/2026-02-26/meeting-opinions-v26.md`
+  - `docs/reviews/2026-02-26/meeting-decisions-v26.md`
+  - `docs/reviews/2026-02-26/meeting-pack-v26.md`
+- 唯一数字口径：`docs/report_pack/2026-02-26-v26/{metrics.csv,scoreboard.md,planb_anticherrypick.md,manifest_sha256.csv}`
+- 离线证据包：`artifacts/report_packs/report_pack_2026-02-26-v26.tar.gz`（SHA 见 `artifacts/report_packs/SHA256SUMS.txt`）
