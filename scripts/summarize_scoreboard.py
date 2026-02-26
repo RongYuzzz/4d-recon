@@ -14,6 +14,7 @@ CORE_RUNS = (
     "baseline_600",
     "ours_weak_600",
     "control_weak_nocue_600",
+    "planb_init_600",
 )
 
 
@@ -72,8 +73,17 @@ def _is_weak_v2_variant(run_name: str) -> bool:
     return lower.startswith("ours_weak_v2_") and lower.endswith("_600")
 
 
+def _is_planb_variant(run_name: str) -> bool:
+    lower = run_name.lower()
+    if "smoke" in lower:
+        return False
+    return lower.startswith("planb_") and lower.endswith("_600")
+
+
 def _keep_run(run_name: str, include_weak_v2: bool) -> bool:
     if run_name in CORE_RUNS:
+        return True
+    if _is_planb_variant(run_name):
         return True
     if include_weak_v2 and _is_weak_v2_variant(run_name):
         return True
@@ -89,11 +99,13 @@ def _run_order_key(run_name: str) -> tuple[int, str]:
         return (2, run_name)
     if run_name == "control_weak_nocue_600":
         return (3, run_name)
-    if _is_feature_loss_variant(run_name):
+    if _is_planb_variant(run_name):
         return (4, run_name)
-    if _is_strong_variant(run_name):
+    if _is_feature_loss_variant(run_name):
         return (5, run_name)
-    return (6, run_name)
+    if _is_strong_variant(run_name):
+        return (6, run_name)
+    return (7, run_name)
 
 
 def parse_args() -> argparse.Namespace:
@@ -212,7 +224,16 @@ def main() -> int:
     risk_lines: list[str] = []
     control = selected.get("control_weak_nocue_600")
     ours_weak = selected.get("ours_weak_600")
-    if control and ours_weak:
+    missing_core: list[str] = []
+    if not ours_weak:
+        missing_core.append("ours_weak_600")
+    if not control:
+        missing_core.append("control_weak_nocue_600")
+
+    if missing_core:
+        missing_fmt = "、".join(f"`{name}`" for name in missing_core)
+        lines.append(f"- 无法判断：缺少 {missing_fmt}。")
+    else:
         control_tlpips = _to_float(control.get("tlpips", ""))
         ours_tlpips = _to_float(ours_weak.get("tlpips", ""))
         control_lpips = _to_float(control.get("lpips", ""))
@@ -222,27 +243,41 @@ def main() -> int:
         control_ssim = _to_float(control.get("ssim", ""))
         ours_ssim = _to_float(ours_weak.get("ssim", ""))
 
+        comparable = False
         # Risk should trigger when control performs better than ours_weak.
-        if control_tlpips is not None and ours_tlpips is not None and control_tlpips < ours_tlpips:
-            risk_lines.append(
-                "- <span style='color:red'>`control_weak_nocue_600` 的 tLPIPS 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+        if control_tlpips is not None and ours_tlpips is not None:
+            comparable = True
+            if control_tlpips < ours_tlpips:
+                risk_lines.append(
+                    "- <span style='color:red'>`control_weak_nocue_600` 的 tLPIPS 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+                )
+        if not risk_lines and control_lpips is not None and ours_lpips is not None:
+            comparable = True
+            if control_lpips < ours_lpips:
+                risk_lines.append(
+                    "- <span style='color:red'>`control_weak_nocue_600` 的 LPIPS 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+                )
+        if not risk_lines and control_psnr is not None and ours_psnr is not None:
+            comparable = True
+            if control_psnr > ours_psnr:
+                risk_lines.append(
+                    "- <span style='color:red'>`control_weak_nocue_600` 的 PSNR 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+                )
+        if not risk_lines and control_ssim is not None and ours_ssim is not None:
+            comparable = True
+            if control_ssim > ours_ssim:
+                risk_lines.append(
+                    "- <span style='color:red'>`control_weak_nocue_600` 的 SSIM 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
+                )
+
+        if risk_lines:
+            lines.extend(risk_lines)
+        elif comparable:
+            lines.append("- 未发现 `control_weak_nocue_600` 优于 `ours_weak_600` 的风险信号。")
+        else:
+            lines.append(
+                "- 无法判断：`control_weak_nocue_600` 与 `ours_weak_600` 缺少可比指标（tLPIPS/LPIPS/PSNR/SSIM）。"
             )
-        elif control_lpips is not None and ours_lpips is not None and control_lpips < ours_lpips:
-            risk_lines.append(
-                "- <span style='color:red'>`control_weak_nocue_600` 的 LPIPS 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
-            )
-        elif control_psnr is not None and ours_psnr is not None and control_psnr > ours_psnr:
-            risk_lines.append(
-                "- <span style='color:red'>`control_weak_nocue_600` 的 PSNR 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
-            )
-        elif control_ssim is not None and ours_ssim is not None and control_ssim > ours_ssim:
-            risk_lines.append(
-                "- <span style='color:red'>`control_weak_nocue_600` 的 SSIM 优于 `ours_weak_600`，提示当前 cue/注入方式可能产生负增益。</span>"
-            )
-    if risk_lines:
-        lines.extend(risk_lines)
-    else:
-        lines.append("- 未发现 `control_weak_nocue_600` 优于 `ours_weak_600` 的风险信号。")
 
     lines.append("")
     lines.append("## 结论要点（占位）")

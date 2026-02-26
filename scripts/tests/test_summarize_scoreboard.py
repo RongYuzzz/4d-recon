@@ -12,7 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "summarize_scoreboard.py"
 
 
-def _write_metrics_csv(path: Path) -> None:
+def _write_metrics_csv(
+    path: Path,
+    *,
+    include_planb: bool = False,
+    include_ours_weak: bool = True,
+    include_control_weak_nocue: bool = True,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "run_dir",
@@ -42,32 +48,63 @@ def _write_metrics_csv(path: Path) -> None:
             "num_gs": "100",
             "notes": "",
         },
-        {
-            "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600",
-            "gate": "",
-            "dataset": "weak_600",
-            "stage": "test",
-            "step": "599",
-            "psnr": "11.0",
-            "ssim": "0.60",
-            "lpips": "0.41",
-            "tlpips": "0.03",
-            "num_gs": "101",
-            "notes": "",
-        },
-        {
-            "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600",
-            "gate": "",
-            "dataset": "weak_nocue_600",
-            "stage": "test",
-            "step": "599",
-            "psnr": "9.0",
-            "ssim": "0.40",
-            "lpips": "0.39",
-            "tlpips": "0.02",
-            "num_gs": "102",
-            "notes": "",
-        },
+        *(
+            [
+                {
+                    "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_600",
+                    "gate": "",
+                    "dataset": "weak_600",
+                    "stage": "test",
+                    "step": "599",
+                    "psnr": "11.0",
+                    "ssim": "0.60",
+                    "lpips": "0.41",
+                    "tlpips": "0.03",
+                    "num_gs": "101",
+                    "notes": "",
+                }
+            ]
+            if include_ours_weak
+            else []
+        ),
+        *(
+            [
+                {
+                    "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/control_weak_nocue_600",
+                    "gate": "",
+                    "dataset": "weak_nocue_600",
+                    "stage": "test",
+                    "step": "599",
+                    "psnr": "9.0",
+                    "ssim": "0.40",
+                    "lpips": "0.39",
+                    "tlpips": "0.02",
+                    "num_gs": "102",
+                    "notes": "",
+                }
+            ]
+            if include_control_weak_nocue
+            else []
+        ),
+        *(
+            [
+                {
+                    "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/planb_init_600",
+                    "gate": "",
+                    "dataset": "selfcap_bar_8cam60f",
+                    "stage": "test",
+                    "step": "599",
+                    "psnr": "11.2",
+                    "ssim": "0.61",
+                    "lpips": "0.28",
+                    "tlpips": "0.019",
+                    "num_gs": "111",
+                    "notes": "",
+                }
+            ]
+            if include_planb
+            else []
+        ),
         # weak-v2 variants (opt-in only)
         {
             "run_dir": "outputs/protocol_v1/selfcap_bar_8cam60f/ours_weak_v2_w1.0_end200_600",
@@ -341,6 +378,68 @@ def run_test() -> None:
         expected_source_line = f"- Source: `{metrics_arg_rel}`"
         if expected_source_line not in md_rel:
             raise AssertionError(f"expected repo-relative source line: {expected_source_line}")
+
+    # Plan-B run should be included in default scoreboard when present in metrics.
+    with tempfile.TemporaryDirectory(prefix="scoreboard_planb_", dir=REPO_ROOT) as td_planb:
+        root_planb = Path(td_planb)
+        metrics_csv_planb = root_planb / "outputs" / "report_pack" / "metrics.csv"
+        out_md_planb = root_planb / "outputs" / "report_pack" / "scoreboard.md"
+        _write_metrics_csv(metrics_csv_planb, include_planb=True)
+        cmd_planb = [
+            sys.executable,
+            str(SCRIPT),
+            "--metrics_csv",
+            str(metrics_csv_planb.relative_to(REPO_ROOT)),
+            "--out_md",
+            str(out_md_planb.relative_to(REPO_ROOT)),
+            "--select_contains",
+            "selfcap_bar_8cam60f",
+            "--select_prefix",
+            "outputs/protocol_v1/",
+            "--step",
+            "599",
+            "--stage",
+            "test",
+        ]
+        proc_planb = subprocess.run(cmd_planb, capture_output=True, text=True, cwd=REPO_ROOT)
+        if proc_planb.returncode != 0:
+            raise RuntimeError(f"summarize_scoreboard planb run failed:\n{proc_planb.stdout}\n{proc_planb.stderr}")
+        md_planb = out_md_planb.read_text(encoding="utf-8")
+        if "planb_init_600" not in md_planb:
+            raise AssertionError("planb_init_600 should be included in scoreboard when present")
+
+    # Risk section should not claim "no risk" when core rows are missing.
+    with tempfile.TemporaryDirectory(prefix="scoreboard_missing_core_", dir=REPO_ROOT) as td_missing:
+        root_missing = Path(td_missing)
+        metrics_csv_missing = root_missing / "outputs" / "report_pack" / "metrics.csv"
+        out_md_missing = root_missing / "outputs" / "report_pack" / "scoreboard.md"
+        _write_metrics_csv(metrics_csv_missing, include_ours_weak=False)
+        cmd_missing = [
+            sys.executable,
+            str(SCRIPT),
+            "--metrics_csv",
+            str(metrics_csv_missing.relative_to(REPO_ROOT)),
+            "--out_md",
+            str(out_md_missing.relative_to(REPO_ROOT)),
+            "--select_contains",
+            "selfcap_bar_8cam60f",
+            "--select_prefix",
+            "outputs/protocol_v1/",
+            "--step",
+            "599",
+            "--stage",
+            "test",
+        ]
+        proc_missing = subprocess.run(cmd_missing, capture_output=True, text=True, cwd=REPO_ROOT)
+        if proc_missing.returncode != 0:
+            raise RuntimeError(
+                f"summarize_scoreboard missing-core run failed:\n{proc_missing.stdout}\n{proc_missing.stderr}"
+            )
+        md_missing = out_md_missing.read_text(encoding="utf-8")
+        if "无法判断：缺少 `ours_weak_600`" not in md_missing:
+            raise AssertionError("missing ours_weak_600 should be reported as undecidable in risk section")
+        if "未发现 `control_weak_nocue_600` 优于 `ours_weak_600` 的风险信号。" in md_missing:
+            raise AssertionError("missing core rows should not be reported as no-risk")
 
 
 if __name__ == "__main__":
