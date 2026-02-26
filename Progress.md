@@ -136,3 +136,18 @@ M2（选择性 full600）：
 - `notes/v2_postfix_preflight_owner_a.md`
 - `notes/v2_postfix_m1_owner_a.md`
 - `notes/v2_postfix_m2_owner_a.md`
+
+## 10. 2026-02-26 会后决议：Pivot 到 Plan‑B（48h timebox）
+
+决议文件（唯一真源）：
+- `docs/decisions/2026-02-26-planb-pivot.md`
+
+会议结论（可执行版）：
+- feature‑loss‑v2 主线 **No‑Go 冻结**：禁止新增 feature‑loss full600，仅允许做“无需 full600 的失败归因统计/可视化”用于写作防守。
+- **触发 Plan‑B**：`triangulation/*.npy → 3D velocity init`，严格 **48h timebox**，并按 Gate 执行（Day1 smoke200 sanity，Day2 仅 1 次 full600 给 Go/No‑Go）。
+- 未来 7 天 full600 预算写死：`N=3`（planb_init_600 + seg200_260 baseline/control）。
+
+执行入口：
+- 脚本：`scripts/init_velocity_from_points.py`
+- runner：`scripts/run_train_planb_init_selfcap.sh`
+- 执行文档：`docs/execution/2026-02-26-planb.md`
