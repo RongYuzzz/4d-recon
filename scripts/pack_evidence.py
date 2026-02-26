@@ -114,6 +114,12 @@ def collect_files(repo_root: Path) -> list[Path]:
     if report_pack_dir.exists():
         files.update(p for p in report_pack_dir.rglob("*") if p.is_file())
 
+    # Plan-B audit artifacts: velocity init + self-check stats.
+    planb_dir = outputs / "plan_b"
+    if planb_dir.exists():
+        files.update(p for p in planb_dir.glob("**/velocity_stats.json") if p.is_file())
+        files.update(p for p in planb_dir.glob("**/init_points_planb*.npz") if p.is_file())
+
     # Strong-fusion audit: include lightweight correspondence visualizations.
     corr_dir = outputs / "correspondences"
     if corr_dir.exists():

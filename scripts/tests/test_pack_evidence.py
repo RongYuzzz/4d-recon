@@ -40,6 +40,12 @@ def run_test() -> None:
         corr_viz.mkdir(parents=True, exist_ok=True)
         (corr_viz / "klt_pair.png").write_bytes(b"fake-png")
 
+        # Plan-B audit artifacts should be included in pack.
+        planb_dir = root / "outputs" / "plan_b" / "selfcap_bar_8cam60f"
+        planb_dir.mkdir(parents=True, exist_ok=True)
+        (planb_dir / "velocity_stats.json").write_text('{"ok": true}\n', encoding="utf-8")
+        (planb_dir / "init_points_planb_step5.npz").write_bytes(b"fake-npz")
+
         out_tar = root / "pack.tar.gz"
         cmd = [
             sys.executable,
@@ -65,6 +71,8 @@ def run_test() -> None:
             "outputs/runA/stats/val_step0001.json",
             "outputs/runA/stats/throughput.json",
             "outputs/runA/videos/traj_4d_step1.mp4",
+            "outputs/plan_b/selfcap_bar_8cam60f/velocity_stats.json",
+            "outputs/plan_b/selfcap_bar_8cam60f/init_points_planb_step5.npz",
             "outputs/correspondences/demo/viz/klt_pair.png",
             "git_rev.txt",
             "manifest_sha256.csv",
