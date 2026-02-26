@@ -33,3 +33,18 @@ Delta (planb - baseline):
 ## One-line trend conclusion
 
 seg1800_1860 smoke200 stays aligned with canonical/seg200_260/seg400_460/seg600_660: Plan-B init improves LPIPS and tLPIPS while keeping a positive PSNR delta, so this slice can be appended as anti-cherrypick evidence.
+
+## Update (re-template baseline init, 2026-02-26)
+
+- baseline template: `outputs/plan_b/selfcap_bar_8cam60f_seg1800_1860/_baseline_init/keyframes_60frames_step5.npz`
+- Gate-S1 key fields:
+  - `match_ratio_over_eligible = 0.5791285625`
+  - `clip_threshold_m_per_frame = 0.0116234971`
+  - `n_clipped = 490`
+- smoke200 (test@step199) baseline vs re-template planb:
+  - baseline: `PSNR 12.5796127319 / LPIPS 0.6289873719 / tLPIPS 0.0888407901`
+  - planb: `PSNR 12.7594900131 / LPIPS 0.5800951719 / tLPIPS 0.0339605361`
+  - deltas (planb - baseline): `ΔPSNR +0.1798772812 / ΔLPIPS -0.0488922000 / ΔtLPIPS -0.0548802540`
+- 判定：**PASS**（Gate-S1 与 Gate-S2 均通过）
+- 一句话结论：re-template 后 seg1800_1860 仍保持同向收益，可继续作为 anti-cherrypick 防守证据。
+

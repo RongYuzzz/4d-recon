@@ -33,3 +33,18 @@
 
 - This segment adds anti-cherrypick evidence at later time window (`frame_start=400`) without consuming extra full600 budget.
 - Evidence can be appended to the existing Plan-B defense narrative as a third slice confirming trend consistency.
+
+## Update (re-template baseline init, 2026-02-26)
+
+- baseline template: `outputs/plan_b/selfcap_bar_8cam60f_seg400_460/_baseline_init/keyframes_60frames_step5.npz`
+- Gate-S1 key fields:
+  - `match_ratio_over_eligible = 0.5887343944`
+  - `clip_threshold_m_per_frame = 0.0113623817`
+  - `n_clipped = 498`
+- smoke200 (test@step199) baseline vs re-template planb:
+  - baseline: `PSNR 12.5888776779 / LPIPS 0.6276710629 / tLPIPS 0.0851773545`
+  - planb: `PSNR 12.7733364105 / LPIPS 0.5796048045 / tLPIPS 0.0336262509`
+  - deltas (planb - baseline): `ΔPSNR +0.1844587326 / ΔLPIPS -0.0480662584 / ΔtLPIPS -0.0515511036`
+- 判定：**PASS**（Gate-S1 与 Gate-S2 均通过）
+- 一句话结论：re-template 后结果仍与既有结论同向，Plan-B 改善稳定且可用于 anti-cherrypick 证据位。
+

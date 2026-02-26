@@ -162,9 +162,9 @@ M2（选择性 full600）：
   - ΔPSNR `+1.4992`，ΔLPIPS `-0.0551`，ΔtLPIPS `-0.0158`
 - seg200_260：`planb_init_600` 相对 `baseline_600`：
   - ΔPSNR `+1.9950`，ΔLPIPS `-0.0604`，ΔtLPIPS `-0.01564`
-- seg400_460（smoke200，budget-neutral）：`planb_init_smoke200` 相对 `baseline_smoke200`：ΔPSNR `+0.1721`，ΔLPIPS `-0.0438`，ΔtLPIPS `-0.04990`（与 canonical/seg200_260 同向，Gate-S2 PASS）
+- seg400_460（smoke200，budget-neutral）：`planb_init_smoke200` 相对 `baseline_smoke200`：ΔPSNR `+0.1845`，ΔLPIPS `-0.0481`，ΔtLPIPS `-0.05155`（2026-02-26 已完成 template hygiene：re-template baseline init 后复跑，结论保持同向，Gate-S2 PASS）
 - seg600_660（smoke200，budget-neutral）：`planb_init_smoke200` 相对 `baseline_smoke200`：ΔPSNR `+0.1905`，ΔLPIPS `-0.0488`，ΔtLPIPS `-0.05252`（与 canonical/seg200_260/seg400_460 同向，Gate-S2 PASS）
-- seg1800_1860（smoke200，budget-neutral）：`planb_init_smoke200` 相对 `baseline_smoke200`：ΔPSNR `+0.1285`，ΔLPIPS `-0.0445`，ΔtLPIPS `-0.05327`（与 canonical/seg200_260/seg400_460/seg600_660 同向，Gate-S2 PASS）
+- seg1800_1860（smoke200，budget-neutral）：`planb_init_smoke200` 相对 `baseline_smoke200`：ΔPSNR `+0.1799`，ΔLPIPS `-0.0489`，ΔtLPIPS `-0.05488`（2026-02-26 已完成 template hygiene：re-template baseline init 后复跑，结论保持同向，Gate-S2 PASS）
 - 证据快照：`docs/report_pack/2026-02-26-v19/`
 - 关键记录：
   - `notes/planb_gate_b1_owner_a.md`、`notes/planb_gate_b2_owner_a.md`
