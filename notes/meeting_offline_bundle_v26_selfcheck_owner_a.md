@@ -3,7 +3,7 @@
 - Date: 2026-02-26
 - Bundle path: `artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`
 - SHA256: `dee936ac9bef7cb88264de9641d3d2d04b4036ee2a76d66a932e7176b84e7dc3`
-- Note: checksum differs from earlier asset note because this hygiene pass rebuilt the local tar to include `meeting-checklist-v26.md` for migration completeness.
+- Note: this hygiene pass rebuilt the local tar to include `meeting-checklist-v26.md` for migration completeness; SHA above is the current ground truth.
 
 ## A182 Selfcheck Result
 

@@ -101,8 +101,9 @@ Use: on-demand backup evidence when anti-cherrypick questions target segments be
 ## 7) Offline bundle (local only, non-git artifact)
 
 - Bundle path: `artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`
-- SHA256:
-  `89a17a3ad9987e006385aaaee3c25fa00f6e5c4fe3ff53491d7bb705957826e4`
+- SHA256 (source of truth): `notes/meeting_offline_bundle_v26_selfcheck_owner_a.md`
+- Current SHA256 (local snapshot): `dee936ac9bef7cb88264de9641d3d2d04b4036ee2a76d66a932e7176b84e7dc3`
+  - If this tar is rebuilt locally, treat the selfcheck note as authoritative.
 
 Verification commands:
 
