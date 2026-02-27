@@ -49,4 +49,4 @@ test "$expected" = "$actual" && echo "[OK] tar SHA match" || echo "[MISMATCH] ta
 ## Optional) Offline Bundle Check（local-only）
 - 若本地存在 bundle，则执行：`sha256sum artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`。
 - 路径：`artifacts/meeting_assets/planb_meeting_assets_v26.tar.gz`（仅本地物料，不入库）。
-- SHA 真源：`notes/planb_meeting_assets_v26_owner_a.md`。
+- SHA 真源：`notes/meeting_offline_bundle_v26_selfcheck_owner_a.md`。
