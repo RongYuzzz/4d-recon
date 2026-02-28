@@ -77,6 +77,15 @@
      - `outputs/report_pack/diagnostics/tlpips_curve_planb_feat_v2_full600_test_step599.csv`
      - `outputs/report_pack/diagnostics/tlpips_curve_delta_planbfeat_minus_planb_test_step599.csv`
      - `outputs/report_pack/diagnostics/tlpips_curve_topk_planbfeat_minus_planb_test_step599.md`
+6. spatial metrics（per-frame GT vs Pred，补充入口）
+   - 诊断说明：`notes/protocol_v2_spatial_metrics_diagnostics.md`
+   - 指标与可视化：
+     - `outputs/report_pack/diagnostics/spatial_metrics_planb_init_600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/spatial_metrics_planb_feat_v2_full600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/spatial_metrics_delta_planbfeat_minus_planb_test_step599.csv`
+     - `outputs/report_pack/diagnostics/spatial_metrics_topk_planbfeat_minus_planb_test_step599.md`
+     - `outputs/report_pack/diagnostics/spatial_metrics_curve_planb_vs_planbfeat_test_step599.png`
+   - 一句话口径：全帧 `PSNR` 有提升，但 `MAE` 在局部区间（52-59）劣化；与 `41->42` 时序锚点结论互补。
 
 ### 动静解耦导出（若已落盘）
 
