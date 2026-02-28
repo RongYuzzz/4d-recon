@@ -2,8 +2,8 @@
 
 ## Inputs
 
-- `/root/autodl-tmp/projects/4d-recon/outputs/protocol_v1/selfcap_bar_8cam60f/planb_init_600/renders`
-- `/root/autodl-tmp/projects/4d-recon/outputs/protocol_v2/selfcap_bar_8cam60f/planb_feat_v2_full600_lam0.005_start300_ramp200_every16/renders`
+- `outputs/protocol_v1/selfcap_bar_8cam60f/planb_init_600/renders`
+- `outputs/protocol_v2/selfcap_bar_8cam60f/planb_feat_v2_full600_lam0.005_start300_ramp200_every16/renders`
 
 ## Method
 
@@ -14,13 +14,15 @@
 
 ## Key Findings
 
-- top-k（按 `delta_mae` 降序）最差帧主要集中在 `59,58,57,56,55,54,53,52,51`（另有 `0`）。
-- 最差 top-k 未直接命中 `41/42`；在 top-20 中出现邻近帧 `44/45`，说明劣化峰值更偏后段（约 `44-59`）。
+- `PSNR`（via `MSE`）在所有帧上均提升（`delta_psnr > 0` / `delta_mse < 0`）。
+- `MAE` 存在局部劣化：`delta_mae > 0` 的帧为 `15/60`，主要集中在 `52-59`（另有少量早段帧如 `0-3`）。
+- `41/42` 邻域的 `delta_mae < 0`（MAE 改善），与 temporal diff / tLPIPS 的主峰（`41->42`）不完全对齐；该现象提示“像素域误差”与“感知/时序指标”可能关注不同失败模式。
+- `spatial_metrics_topk_*.md` 的排序口径为 `delta_mae`（不是按 `PSNR` 排序）。
 
-## Artifacts (absolute paths)
+## Artifacts (repo-relative paths)
 
-- `/root/autodl-tmp/projects/4d-recon/outputs/report_pack/diagnostics/spatial_metrics_planb_init_600_test_step599.csv`
-- `/root/autodl-tmp/projects/4d-recon/outputs/report_pack/diagnostics/spatial_metrics_planb_feat_v2_full600_test_step599.csv`
-- `/root/autodl-tmp/projects/4d-recon/outputs/report_pack/diagnostics/spatial_metrics_delta_planbfeat_minus_planb_test_step599.csv`
-- `/root/autodl-tmp/projects/4d-recon/outputs/report_pack/diagnostics/spatial_metrics_curve_planb_vs_planbfeat_test_step599.png`
-- `/root/autodl-tmp/projects/4d-recon/outputs/report_pack/diagnostics/spatial_metrics_topk_planbfeat_minus_planb_test_step599.md`
+- `outputs/report_pack/diagnostics/spatial_metrics_planb_init_600_test_step599.csv`
+- `outputs/report_pack/diagnostics/spatial_metrics_planb_feat_v2_full600_test_step599.csv`
+- `outputs/report_pack/diagnostics/spatial_metrics_delta_planbfeat_minus_planb_test_step599.csv`
+- `outputs/report_pack/diagnostics/spatial_metrics_curve_planb_vs_planbfeat_test_step599.png`
+- `outputs/report_pack/diagnostics/spatial_metrics_topk_planbfeat_minus_planb_test_step599.md`

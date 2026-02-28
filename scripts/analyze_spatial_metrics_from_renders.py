@@ -35,8 +35,10 @@ def _frame_idx_from_name(name: str) -> int:
 
 
 def _load_gt_pred_concat(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    image = Image.open(path).convert("RGB")
-    array = np.asarray(image, dtype=np.float32) / 255.0
+    # Ensure file handles are released promptly when iterating many frames.
+    with Image.open(path) as image:
+        image = image.convert("RGB")
+        array = np.asarray(image, dtype=np.float32) / 255.0
     _, width, _ = array.shape
     if width % 2 != 0:
         raise ValueError(f"expected even width for GT|Pred concat, got w={width} for {path}")
