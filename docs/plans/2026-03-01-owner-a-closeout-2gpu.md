@@ -7,10 +7,12 @@
 - ✅ Task 1.5：`notes/protocol_v1_time_duration_audit.md`（dur0 依据）
 - ✅ smoke200 校准（含 `l4d=1e-4`）
 - ✅ `protocol_v1_convergecheck` baseline 长训：`outputs/.../baseline_long5k_dur0`（dur0 + L4D=1e-4）
+- ✅ `protocol_v1_seg300_360` dur0 补齐：`outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_600_dur0`、`.../planb_init_600_dur0`
 - ✅ 误配 run 已隔离到 `_aborted_*` 目录（不参与对比）
 - ✅ Runbook 片段已交付并被 Owner B 集成到 freeze runbook
+- ✅ 最终独立复核（PASS）：SoT tar（`outputs/report_pack_2026-03-06_seg300dur0.tar.gz`）的 SHA/manifest_match 通过；DoD 指针资产可播放/可打开
 
-## Remaining work (现在要做什么)
+## Re-verify (optional, 防版本偏斜)
 
 ### 1) 同步到 freeze 分支（只读/复核用）
 

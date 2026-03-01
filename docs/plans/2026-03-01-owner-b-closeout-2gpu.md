@@ -13,16 +13,16 @@
   - SHA：`docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt`
   - manifest：`docs/report_pack/2026-02-27-v2/manifest_sha256.csv`
   - `manifest_match: yes`
+- ✅ Owner A 最终独立复核：PASS（manifest_match + DoD 播放性）
 
 ## Remaining work (现在要做什么)
 
-### 0) 等待 Owner A 最终独立复核（P0，硬门控）
+### 0) （如未完成）合并 PR / 合入主分支（P0）
 
-让 Owner A 按 `docs/plans/2026-03-01-owner-a-closeout-2gpu.md` 重新跑：
-- evidence tar 复核（`manifest_match: yes`）
-- DoD 资产路径可播放/可打开（无 TODO）
-
-只有 Owner A 明确回复 “PASS” 才进入合并。
+前置硬门控：
+- `docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt` 指向 SoT tar（当前：`outputs/report_pack_2026-03-06_seg300dur0.tar.gz`）
+- `manifest_match: yes`
+- DoD 指针页无 TODO，且资产可播放/可打开
 
 ### 1) 最终自检（P0）
 
