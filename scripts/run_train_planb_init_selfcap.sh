@@ -24,6 +24,7 @@ CONFIG="${CONFIG:-default_keyframe_small}"
 GLOBAL_SCALE="${GLOBAL_SCALE:-6}"
 RENDER_TRAJ_PATH="${RENDER_TRAJ_PATH:-fixed}"
 SEED="${SEED:-42}"
+EXTRA_TRAIN_ARGS="${EXTRA_TRAIN_ARGS:-}"
 
 _to_steps_array() {
   local raw="$1"
@@ -37,6 +38,12 @@ mapfile -t EVAL_STEPS_ARR < <(_to_steps_array "$EVAL_STEPS_RAW")
 mapfile -t SAVE_STEPS_ARR < <(_to_steps_array "$SAVE_STEPS_RAW")
 EVAL_STEPS_PRINT="${EVAL_STEPS_ARR[*]}"
 SAVE_STEPS_PRINT="${SAVE_STEPS_ARR[*]}"
+# Split EXTRA_TRAIN_ARGS into an argv array, preserving shell-style spacing.
+EXTRA_TRAIN_ARGS_ARR=()
+if [ -n "$EXTRA_TRAIN_ARGS" ]; then
+  # shellcheck disable=SC2206
+  EXTRA_TRAIN_ARGS_ARR=($EXTRA_TRAIN_ARGS)
+fi
 
 # Frozen protocol defaults (camera split).
 TRAIN_CAMERA_NAMES="${TRAIN_CAMERA_NAMES:-02,03,04,05,06,07}"
@@ -84,6 +91,7 @@ echo "[Plan-B Runner] result_dir:    $RESULT_DIR"
 echo "[Plan-B Runner] frame range:   [$START_FRAME, $END_FRAME)"
 echo "[Plan-B Runner] gpu/max:       $GPU / $MAX_STEPS"
 echo "[Plan-B Runner] eval/save:     $EVAL_STEPS_PRINT / $SAVE_STEPS_PRINT"
+echo "[Plan-B Runner] extra args:    ${EXTRA_TRAIN_ARGS:-<none>}"
 echo "[Plan-B Runner] baseline_init: $BASELINE_INIT_NPZ"
 echo "[Plan-B Runner] planb_init:    $PLANB_INIT_NPZ"
 
@@ -133,6 +141,7 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --eval-sample-every-test "$EVAL_SAMPLE_EVERY_TEST" \
   --render-traj-path "$RENDER_TRAJ_PATH" \
   --global-scale "$GLOBAL_SCALE" \
+  "${EXTRA_TRAIN_ARGS_ARR[@]}" \
   $(if [ "$EVAL_ON_TEST" = "1" ]; then echo --eval-on-test; fi)
 
 "$VENV_PYTHON" "$THROUGHPUT_SCRIPT" "$RESULT_DIR"

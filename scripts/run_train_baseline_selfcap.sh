@@ -18,10 +18,25 @@ END_FRAME="${END_FRAME:-60}"
 KEYFRAME_STEP="${KEYFRAME_STEP:-5}"
 GPU="${GPU:-0}"
 MAX_STEPS="${MAX_STEPS:-600}"
+EVAL_STEPS_RAW="${EVAL_STEPS:-$MAX_STEPS}"
+SAVE_STEPS_RAW="${SAVE_STEPS:-$MAX_STEPS}"
 CONFIG="${CONFIG:-default_keyframe_small}"
 GLOBAL_SCALE="${GLOBAL_SCALE:-6}"
 RENDER_TRAJ_PATH="${RENDER_TRAJ_PATH:-fixed}"
 SEED="${SEED:-42}"
+
+_to_steps_array() {
+  local raw="$1"
+  raw="${raw//,/ }"
+  # shellcheck disable=SC2206
+  local arr=($raw)
+  printf '%s\n' "${arr[@]}"
+}
+
+mapfile -t EVAL_STEPS_ARR < <(_to_steps_array "$EVAL_STEPS_RAW")
+mapfile -t SAVE_STEPS_ARR < <(_to_steps_array "$SAVE_STEPS_RAW")
+EVAL_STEPS_PRINT="${EVAL_STEPS_ARR[*]}"
+SAVE_STEPS_PRINT="${SAVE_STEPS_ARR[*]}"
 
 # Frozen protocol defaults (camera split).
 TRAIN_CAMERA_NAMES="${TRAIN_CAMERA_NAMES:-02,03,04,05,06,07}"
@@ -63,6 +78,7 @@ echo "[Baseline] data_dir:    $DATA_DIR"
 echo "[Baseline] result_dir:  $RESULT_DIR"
 echo "[Baseline] frame range: [$START_FRAME, $END_FRAME)"
 echo "[Baseline] gpu/max:     $GPU / $MAX_STEPS"
+echo "[Baseline] eval/save:   $EVAL_STEPS_PRINT / $SAVE_STEPS_PRINT"
 
 "$VENV_PYTHON" "$COMBINE_SCRIPT" \
   --input-dir "$DATA_DIR/triangulation" \
@@ -78,8 +94,8 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --start-frame "$START_FRAME" \
   --end-frame "$END_FRAME" \
   --max-steps "$MAX_STEPS" \
-  --eval-steps "$MAX_STEPS" \
-  --save-steps "$MAX_STEPS" \
+  --eval-steps "${EVAL_STEPS_ARR[@]}" \
+  --save-steps "${SAVE_STEPS_ARR[@]}" \
   --seed "$SEED" \
   --train-camera-names "$TRAIN_CAMERA_NAMES" \
   --val-camera-names "$VAL_CAMERA_NAMES" \
