@@ -1,0 +1,30 @@
+protocol_id: protocol_v1_convergecheck
+owner: owner-b
+date: 2026-03-01
+notes:
+  - Closeout converge-check protocol for internal decision support.
+  - Not a paper FreeTimeGS reproduction.
+
+dataset:
+  id: selfcap_bar_8cam60f
+  path: data/selfcap_bar_8cam60f
+  frame_range: [0, 60)
+  camera_split:
+    train: ["02", "03", "04", "05", "06", "07"]
+    val: ["08"]
+    test: ["09"]
+
+schedule:
+  max_steps: 5000
+  optional_max_steps: 10000
+  eval_steps: [600, 2000, 5000]
+  optional_eval_steps: [10000]
+
+locked_hyperparams:
+  seed: 42
+  lambda_duration_reg: 0
+  lambda_4d_reg: 1.0e-4
+
+comparison_runs:
+  - baseline_long5k_dur0
+  - planb_init_long5k_dur0
