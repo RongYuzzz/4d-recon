@@ -30,9 +30,13 @@ cat docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt
 
 Expected:
 - `closeout_dod_assets.md` 不包含 `TODO_`。
-- `evidence_tar_sha256.txt` 指向最新 SoT tar（当前应为 `outputs/report_pack_2026-03-06_dodfix.tar.gz`）。
+- `evidence_tar_sha256.txt` 指向最新 SoT tar（以文件内容为准；当前为 `outputs/report_pack_2026-03-06_seg300dur0.tar.gz`）。
 
-### 2) BLOCKER：补齐 `seg300_360` 的 dur0 证据（P0，GPU 任务）
+### 2) （如缺失）补齐 `seg300_360` 的 dur0 证据（P0，GPU 任务）
+
+如果以下两条目录已存在且 `cfg.yml` 中 `lambda_duration_reg: 0.0`，可跳过本节：
+- `.../baseline_600_dur0`
+- `.../planb_init_600_dur0`
 
 依据：`notes/protocol_v1_time_duration_audit.md` 明确要求 `protocol_v1_seg300_360` 也必须 `dur0`（否则 duration_reg 目标值会被 `init_duration=-1` 的 auto-init 路径污染）。
 
@@ -112,7 +116,7 @@ Open:
 - `docs/report_pack/2026-02-27-v2/closeout_dod_assets.md`
 
 Check:
-- 3 个路径均存在，视频可播放，图可打开：
+- 4 个路径均存在，视频可播放，图可打开：
   - static video
   - dynamic video
   - side-by-side compare
@@ -130,7 +134,7 @@ print("png_ok")
 PY
 ```
 
-### 4) Stop rule（防止把 freeze 搞脏）
+### 5) Stop rule（防止把 freeze 搞脏）
 
 - 不要运行：`build_report_pack.py` / `summarize_scoreboard.py` / `pack_evidence.py`
 - 除非 Owner B 明确要求补实验，否则不新增训练（包括 stage‑2）
