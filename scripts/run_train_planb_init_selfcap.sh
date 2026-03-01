@@ -18,10 +18,25 @@ END_FRAME="${END_FRAME:-60}"
 KEYFRAME_STEP="${KEYFRAME_STEP:-5}"
 GPU="${GPU:-0}"
 MAX_STEPS="${MAX_STEPS:-600}"
+EVAL_STEPS_RAW="${EVAL_STEPS:-$MAX_STEPS}"
+SAVE_STEPS_RAW="${SAVE_STEPS:-$MAX_STEPS}"
 CONFIG="${CONFIG:-default_keyframe_small}"
 GLOBAL_SCALE="${GLOBAL_SCALE:-6}"
 RENDER_TRAJ_PATH="${RENDER_TRAJ_PATH:-fixed}"
 SEED="${SEED:-42}"
+
+_to_steps_array() {
+  local raw="$1"
+  raw="${raw//,/ }"
+  # shellcheck disable=SC2206
+  local arr=($raw)
+  printf '%s\n' "${arr[@]}"
+}
+
+mapfile -t EVAL_STEPS_ARR < <(_to_steps_array "$EVAL_STEPS_RAW")
+mapfile -t SAVE_STEPS_ARR < <(_to_steps_array "$SAVE_STEPS_RAW")
+EVAL_STEPS_PRINT="${EVAL_STEPS_ARR[*]}"
+SAVE_STEPS_PRINT="${SAVE_STEPS_ARR[*]}"
 
 # Frozen protocol defaults (camera split).
 TRAIN_CAMERA_NAMES="${TRAIN_CAMERA_NAMES:-02,03,04,05,06,07}"
@@ -68,6 +83,7 @@ echo "[Plan-B Runner] data_dir:      $DATA_DIR"
 echo "[Plan-B Runner] result_dir:    $RESULT_DIR"
 echo "[Plan-B Runner] frame range:   [$START_FRAME, $END_FRAME)"
 echo "[Plan-B Runner] gpu/max:       $GPU / $MAX_STEPS"
+echo "[Plan-B Runner] eval/save:     $EVAL_STEPS_PRINT / $SAVE_STEPS_PRINT"
 echo "[Plan-B Runner] baseline_init: $BASELINE_INIT_NPZ"
 echo "[Plan-B Runner] planb_init:    $PLANB_INIT_NPZ"
 
@@ -107,8 +123,8 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --start-frame "$START_FRAME" \
   --end-frame "$END_FRAME" \
   --max-steps "$MAX_STEPS" \
-  --eval-steps "$MAX_STEPS" \
-  --save-steps "$MAX_STEPS" \
+  --eval-steps "${EVAL_STEPS_ARR[@]}" \
+  --save-steps "${SAVE_STEPS_ARR[@]}" \
   --seed "$SEED" \
   --train-camera-names "$TRAIN_CAMERA_NAMES" \
   --val-camera-names "$VAL_CAMERA_NAMES" \
@@ -122,4 +138,3 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
 "$VENV_PYTHON" "$THROUGHPUT_SCRIPT" "$RESULT_DIR"
 
 echo "[Plan-B Runner] Done: $RESULT_DIR"
-
