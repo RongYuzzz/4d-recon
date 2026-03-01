@@ -20,11 +20,13 @@ Integrated inputs from Owner A:
 
 ## 1) Convergecheck runs (5k)
 
+Note: these two runs can be executed in parallel on 2 GPUs (recommended), or sequentially on 1 GPU by changing `GPU=<id>`.
+
 ### baseline_long5k_dur0
 
 ```bash
 cd /root/autodl-tmp/projects/4d-recon
-GPU=1 MAX_STEPS=5000 \
+GPU=0 MAX_STEPS=5000 \
 RESULT_DIR=outputs/protocol_v1_convergecheck/selfcap_bar_8cam60f/baseline_long5k_dur0 \
 EVAL_STEPS=600,2000,5000 SAVE_STEPS=600,2000,5000 \
 EXTRA_TRAIN_ARGS="--lambda-duration-reg 0 --lambda-4d-reg 1e-4" \
@@ -77,21 +79,21 @@ python3 scripts/analyze_smoke200_m1.py \
   --out_md docs/report_pack/2026-02-27-v2/scoreboard_protocol_v1_convergecheck.md \
   --select_contains selfcap_bar_8cam60f \
   --select_prefix outputs/protocol_v1_convergecheck/ \
-  --stage test --step 599 --baseline_regex "^baseline_"
+  --stage test --step 599 --baseline_regex "^baseline_long5k_dur0$"
 
 python3 scripts/analyze_smoke200_m1.py \
   --metrics_csv outputs/report_pack/metrics.csv \
   --out_md docs/report_pack/2026-02-27-v2/scoreboard_protocol_v1_convergecheck_step2000.md \
   --select_contains selfcap_bar_8cam60f \
   --select_prefix outputs/protocol_v1_convergecheck/ \
-  --stage test --step 1999 --baseline_regex "^baseline_"
+  --stage test --step 1999 --baseline_regex "^baseline_long5k_dur0$"
 
 python3 scripts/analyze_smoke200_m1.py \
   --metrics_csv outputs/report_pack/metrics.csv \
   --out_md docs/report_pack/2026-02-27-v2/scoreboard_protocol_v1_convergecheck_step5000.md \
   --select_contains selfcap_bar_8cam60f \
   --select_prefix outputs/protocol_v1_convergecheck/ \
-  --stage test --step 4999 --baseline_regex "^baseline_"
+  --stage test --step 4999 --baseline_regex "^baseline_long5k_dur0$"
 
 python3 scripts/summarize_scoreboard.py \
   --metrics_csv outputs/report_pack/metrics.csv \
@@ -107,6 +109,16 @@ python3 scripts/summarize_scoreboard.py \
   --select_contains selfcap_bar_8cam60f/ \
   --select_prefix "" \
   --stage test --step 599
+```
+
+## 3.5) Generate the DoD explanatory figure (optional but recommended)
+
+```bash
+cd /root/autodl-tmp/projects/4d-recon
+python3 scripts/viz_convergecheck_v1_psnr_tlpips.py \
+  --baseline_dir outputs/protocol_v1_convergecheck/selfcap_bar_8cam60f/baseline_long5k_dur0 \
+  --planb_dir outputs/protocol_v1_convergecheck/selfcap_bar_8cam60f/planb_init_long5k_dur0 \
+  --out_png outputs/report_pack/diagnostics/closeout_20260306/convergecheck_v1_psnr_tlpips_vs_step.png
 ```
 
 ## 4) Freeze package + manifest lock
