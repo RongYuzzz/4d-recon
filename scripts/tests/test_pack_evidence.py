@@ -17,6 +17,10 @@ def run_test() -> None:
         root = Path(td)
         (root / "README.md").write_text("demo\n", encoding="utf-8")
 
+        docs_runbook = root / "docs" / "runbook"
+        docs_runbook.mkdir(parents=True, exist_ok=True)
+        (docs_runbook / "demo.md").write_text("# demo runbook\n", encoding="utf-8")
+
         (root / "notes").mkdir(parents=True, exist_ok=True)
         (root / "notes" / "demo-runbook.md").write_text("# runbook\n", encoding="utf-8")
 
@@ -74,6 +78,7 @@ def run_test() -> None:
 
         must_have = {
             "README.md",
+            "docs/runbook/demo.md",
             "notes/demo-runbook.md",
             "outputs/runA/stats/val_step0001.json",
             "outputs/runA/stats/throughput.json",
@@ -92,6 +97,10 @@ def run_test() -> None:
 
         if "outputs/runA/ckpts/ckpt_1.pt" in names:
             raise AssertionError("ckpt should be excluded from tar")
+
+
+def test_pack_evidence_contract() -> None:
+    run_test()
 
 
 if __name__ == "__main__":
