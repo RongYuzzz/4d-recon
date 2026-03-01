@@ -4,12 +4,12 @@ from __future__ import annotations
 import argparse
 import csv
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
 import torch
 from PIL import Image
-from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +64,55 @@ def _to_tensor(img: np.ndarray, device: str) -> torch.Tensor:
     return t.to(device=device, dtype=torch.float32)
 
 
+def _build_tlpips_fn(device: str) -> tuple[callable, str]:
+    """Return (fn, backend_name).
+
+    Preferred backend order:
+    1) torchmetrics LPIPS (if installed)
+    2) lpips (if installed)
+    3) pixel MSE proxy (always available)
+    """
+
+    try:
+        from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity  # type: ignore
+
+        metric = LearnedPerceptualImagePatchSimilarity(net_type="alex", normalize=True).to(device)
+        metric.eval()
+
+        def _fn(cur: torch.Tensor, prev: torch.Tensor) -> float:
+            metric.update(cur, prev)
+            val = float(metric.compute().detach().cpu().item())
+            metric.reset()
+            return val
+
+        return _fn, "torchmetrics.lpips"
+    except Exception:
+        pass
+
+    try:
+        import lpips  # type: ignore
+
+        model = lpips.LPIPS(net="alex").to(device)
+        model.eval()
+
+        def _fn(cur: torch.Tensor, prev: torch.Tensor) -> float:
+            # lpips expects inputs roughly in [-1, 1]
+            cur_n = cur * 2.0 - 1.0
+            prev_n = prev * 2.0 - 1.0
+            val = model(cur_n, prev_n)
+            return float(val.detach().cpu().item())
+
+        return _fn, "lpips"
+    except Exception:
+        pass
+
+    def _fn(cur: torch.Tensor, prev: torch.Tensor) -> float:
+        # Fallback: not true LPIPS. Use a stable proxy so the script still runs.
+        return float(torch.mean(torch.square(cur - prev)).detach().cpu().item())
+
+    return _fn, "pixel_mse_proxy"
+
+
 def compute_tlpips_rows(frames: list[Path], pattern_prefix: str, device: str) -> list[dict[str, str]]:
     if len(frames) < 2:
         raise ValueError(f"need at least 2 frames, got {len(frames)}")
@@ -71,17 +120,19 @@ def compute_tlpips_rows(frames: list[Path], pattern_prefix: str, device: str) ->
     pred_frames = [_extract_pred_half(p) for p in frames]
     frame_indices = [_frame_index_from_name(p, pattern_prefix) for p in frames]
 
-    metric = LearnedPerceptualImagePatchSimilarity(net_type="alex", normalize=True).to(device)
-    metric.eval()
+    tlpips_fn, backend = _build_tlpips_fn(device)
+    if backend != "torchmetrics.lpips":
+        print(
+            f"[warn] tlpips backend={backend!r}; install torchmetrics or lpips for true LPIPS.",
+            file=sys.stderr,
+        )
 
     rows: list[dict[str, str]] = []
     with torch.no_grad():
         for pair_idx in range(1, len(pred_frames)):
             prev = _to_tensor(pred_frames[pair_idx - 1], device=device)
             cur = _to_tensor(pred_frames[pair_idx], device=device)
-            metric.update(cur, prev)
-            tlpips = float(metric.compute().detach().cpu().item())
-            metric.reset()
+            tlpips = tlpips_fn(cur, prev)
             rows.append(
                 {
                     "pair_idx": str(pair_idx - 1),
