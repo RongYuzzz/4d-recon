@@ -4,8 +4,8 @@
 
 This runbook reproduces the closeout evidence chain for:
 - `protocol_v1_convergecheck` (baseline vs planb_init at steps 599/1999/4999)
-- `protocol_v1_seg300_360` (baseline vs planb_init at step 599)
-- freeze packaging (`report_pack_2026-03-06.tar.gz` + manifest snapshot lock)
+- `protocol_v1_seg300_360` (`*_dur0`, baseline vs planb_init at step 599)
+- freeze packaging (`report_pack_2026-03-06_seg300dur0.tar.gz` + manifest snapshot lock)
 
 Integrated inputs from Owner A:
 - `notes/protocol_v1_time_duration_audit.md`
@@ -45,27 +45,46 @@ EXTRA_TRAIN_ARGS="--lambda-duration-reg 0 --lambda-4d-reg 1e-4" \
 bash scripts/run_train_planb_init_selfcap.sh
 ```
 
+Quick self-check (`cfg.yml` must be dur0):
+```bash
+cd /root/autodl-tmp/projects/4d-recon
+rg -n "lambda_(duration_reg|4d_reg)" \
+  outputs/protocol_v1_convergecheck/selfcap_bar_8cam60f/planb_init_long5k_dur0/cfg.yml
+```
+
 ## 2) seg300_360 runs (600)
 
-### baseline_600
+### baseline_600_dur0
 
 ```bash
 cd /root/autodl-tmp/projects/4d-recon
 DATA_DIR=data/selfcap_bar_8cam60f_seg300_360 GPU=1 MAX_STEPS=600 \
-RESULT_DIR=outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_600 \
+RESULT_DIR=outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_600_dur0 \
 EXTRA_TRAIN_ARGS="--lambda-duration-reg 0 --lambda-4d-reg 1e-4" \
 bash scripts/run_train_baseline_selfcap.sh
 ```
 
-### planb_init_600
+### planb_init_600_dur0
 
 ```bash
 cd /root/autodl-tmp/projects/4d-recon
 DATA_DIR=data/selfcap_bar_8cam60f_seg300_360 GPU=1 MAX_STEPS=600 \
-RESULT_DIR=outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/planb_init_600 \
-BASELINE_INIT_NPZ=outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_600/keyframes_60frames_step5.npz \
+RESULT_DIR=outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/planb_init_600_dur0 \
+BASELINE_INIT_NPZ=outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_600_dur0/keyframes_60frames_step5.npz \
 EXTRA_TRAIN_ARGS="--lambda-duration-reg 0 --lambda-4d-reg 1e-4" \
 bash scripts/run_train_planb_init_selfcap.sh
+```
+
+Quick self-check (`cfg.yml` and `test_step0599.json`):
+```bash
+cd /root/autodl-tmp/projects/4d-recon
+for d in \
+  outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/baseline_600_dur0 \
+  outputs/protocol_v1_seg300_360/selfcap_bar_8cam60f_seg300_360/planb_init_600_dur0; do \
+  echo "--- $d"; \
+  rg -n "lambda_(duration_reg|4d_reg)" "$d/cfg.yml"; \
+  ls -la "$d/stats/test_step0599.json"; \
+done
 ```
 
 ## 3) Build scoreboards
@@ -95,12 +114,13 @@ python3 scripts/analyze_smoke200_m1.py \
   --select_prefix outputs/protocol_v1_convergecheck/ \
   --stage test --step 4999 --baseline_regex "^baseline_long5k_dur0$"
 
-python3 scripts/summarize_scoreboard.py \
+python3 scripts/analyze_smoke200_m1.py \
   --metrics_csv outputs/report_pack/metrics.csv \
   --out_md docs/report_pack/2026-02-27-v2/scoreboard_seg300_360_full600.md \
-  --select_contains selfcap_bar_8cam60f_seg300_360 \
+  --select_contains _dur0 \
   --select_prefix outputs/protocol_v1_seg300_360/ \
-  --stage test --step 599
+  --stage test --step 599 \
+  --baseline_regex "^baseline_600_dur0$"
 
 python3 scripts/summarize_scoreboard.py \
   --metrics_csv outputs/report_pack/metrics.csv \
@@ -126,15 +146,15 @@ python3 scripts/viz_convergecheck_v1_psnr_tlpips.py \
 ```bash
 cd /root/autodl-tmp/projects/4d-recon
 python3 scripts/build_report_pack.py
-python3 scripts/pack_evidence.py --out_tar outputs/report_pack_2026-03-06_dodfix.tar.gz
+python3 scripts/pack_evidence.py --out_tar outputs/report_pack_2026-03-06_seg300dur0.tar.gz
 
 # lock snapshot to tar manifest (source of truth)
-tar -xOzf outputs/report_pack_2026-03-06_dodfix.tar.gz manifest_sha256.csv > docs/report_pack/2026-02-27-v2/manifest_sha256.csv
-sha256sum outputs/report_pack_2026-03-06_dodfix.tar.gz | tee docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt
+tar -xOzf outputs/report_pack_2026-03-06_seg300dur0.tar.gz manifest_sha256.csv > docs/report_pack/2026-02-27-v2/manifest_sha256.csv
+sha256sum outputs/report_pack_2026-03-06_seg300dur0.tar.gz | tee docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt
 
 # hard gate
 diff -u docs/report_pack/2026-02-27-v2/manifest_sha256.csv \
-  <(tar -xOzf outputs/report_pack_2026-03-06_dodfix.tar.gz manifest_sha256.csv)
+  <(tar -xOzf outputs/report_pack_2026-03-06_seg300dur0.tar.gz manifest_sha256.csv)
 ```
 
 Expected: final `diff` is empty (`manifest_match: yes`).

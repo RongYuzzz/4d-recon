@@ -1,16 +1,19 @@
-# Protocol Scoreboard
+# Smoke200 M1 Analysis
 - Source: `outputs/report_pack/metrics.csv`
-- Filter: stage=`test`, step=`599`, contains=`selfcap_bar_8cam60f_seg300_360`, prefix=`outputs/protocol_v1_seg300_360/`
+- Filter: stage=`test`, step=`599`, contains=`_dur0`, prefix=`outputs/protocol_v1_seg300_360/`
+- Baseline: `baseline_600_dur0`
 
-| run | PSNR | SSIM | LPIPS | tLPIPS | ΔPSNR | ΔSSIM | ΔLPIPS | ΔtLPIPS |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| baseline_600 | 19.1647 | 0.6490 | 0.3963 | 0.0217 | +0.0000 | +0.0000 | +0.0000 | +0.0000 |
-| planb_init_600 | 20.7071 | 0.6905 | 0.3448 | 0.0076 | +1.5424 | +0.0415 | -0.0515 | -0.0141 |
+## M1 Table
+| run | PSNR | tLPIPS | ΔPSNR | ΔLPIPS | ΔtLPIPS |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline_600_dur0 | 19.2621 | 0.0216 | +0.0000 | +0.0000 | +0.0000 |
+| planb_init_600_dur0 | 20.5168 | 0.0078 | +1.2546 | -0.0525 | -0.0137 |
 
-## 风险提示
-- 无法判断：缺少 `ours_weak_600`、`control_weak_nocue_600`。
+## Pareto Frontier
+| run | PSNR | tLPIPS |
+| --- | ---: | ---: |
+| planb_init_600_dur0 | 20.5168 | 0.0078 |
 
-## 结论要点（自动生成）
-- PSNR 最优：`planb_init_600` (20.7071)
-- tLPIPS 最优：`planb_init_600` (0.0076)
-- 风险提示：无法判断：缺少 `ours_weak_600`、`control_weak_nocue_600`。
+## Recommendation
+- 推荐 run：`planb_init_600_dur0` (PSNR=20.5168, tLPIPS=0.0078)
+- 约束：PSNR >= 18.7621, tLPIPS <= 0.0316
