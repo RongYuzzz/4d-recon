@@ -26,13 +26,18 @@ rg -n \"TODO_\" docs/report_pack/2026-02-27-v2/closeout_dod_assets.md || true
 
 Expected: 无输出（DoD 指认页无 TODO）。
 
+If Owner A reports `TODO_*` still exists:
+- 说明 A 未同步到最新 `owner-b/closeout-2gpu`（版本偏斜），让 A 重新 `git fetch --all && git merge owner-b/closeout-2gpu` 后再复核。
+
 ### 2) 再次确认 manifest_match（P0）
 
 Run:
 ```bash
 cd /root/autodl-tmp/projects/4d-recon
+cat docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt
+TAR_PATH="$(awk '{print $2}' docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt)"
 diff -u docs/report_pack/2026-02-27-v2/manifest_sha256.csv \
-  <(tar -xOzf outputs/report_pack_2026-03-06_dodfix.tar.gz manifest_sha256.csv)
+  <(tar -xOzf "$TAR_PATH" manifest_sha256.csv)
 ```
 
 Expected: diff 为空。
@@ -49,4 +54,3 @@ Expected: diff 为空。
 
 - 不要覆盖或删除旧 tar；只追加新的 tar（当前 SoT 以 `evidence_tar_sha256.txt` 为准）
 - 不新增训练/扫参（除非写作上出现“缺一票否决证据”的新阻塞）
-
