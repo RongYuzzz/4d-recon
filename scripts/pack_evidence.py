@@ -76,6 +76,7 @@ def collect_files(repo_root: Path) -> list[Path]:
                 files.add(p)
         files.update(p for p in (docs_dir / "protocols").glob("*.yaml") if p.is_file())
         files.update(p for p in (docs_dir / "execution").glob("*.md") if p.is_file())
+        files.update(p for p in (docs_dir / "runbook").glob("*.md") if p.is_file())
         files.update(p for p in (docs_dir / "report_pack").rglob("*") if p.is_file())
 
     notes_dir = repo_root / "notes"
