@@ -126,15 +126,15 @@ python3 scripts/viz_convergecheck_v1_psnr_tlpips.py \
 ```bash
 cd /root/autodl-tmp/projects/4d-recon
 python3 scripts/build_report_pack.py
-python3 scripts/pack_evidence.py --out_tar outputs/report_pack_2026-03-06.tar.gz
+python3 scripts/pack_evidence.py --out_tar outputs/report_pack_2026-03-06_dodfix.tar.gz
 
 # lock snapshot to tar manifest (source of truth)
-tar -xOzf outputs/report_pack_2026-03-06.tar.gz manifest_sha256.csv > docs/report_pack/2026-02-27-v2/manifest_sha256.csv
-sha256sum outputs/report_pack_2026-03-06.tar.gz | tee docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt
+tar -xOzf outputs/report_pack_2026-03-06_dodfix.tar.gz manifest_sha256.csv > docs/report_pack/2026-02-27-v2/manifest_sha256.csv
+sha256sum outputs/report_pack_2026-03-06_dodfix.tar.gz | tee docs/report_pack/2026-02-27-v2/evidence_tar_sha256.txt
 
 # hard gate
 diff -u docs/report_pack/2026-02-27-v2/manifest_sha256.csv \
-  <(tar -xOzf outputs/report_pack_2026-03-06.tar.gz manifest_sha256.csv)
+  <(tar -xOzf outputs/report_pack_2026-03-06_dodfix.tar.gz manifest_sha256.csv)
 ```
 
 Expected: final `diff` is empty (`manifest_match: yes`).
