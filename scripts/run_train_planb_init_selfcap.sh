@@ -9,7 +9,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-VENV_PYTHON="${VENV_PYTHON:-/root/projects/4d-recon/third_party/FreeTimeGsVanilla/.venv/bin/python}"
+VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
 DATA_DIR="${DATA_DIR:-$REPO_ROOT/data/selfcap_bar_8cam60f}"
 RESULT_DIR="${1:-${RESULT_DIR:-$REPO_ROOT/outputs/protocol_v1/selfcap_bar_8cam60f/planb_init}}"
 
@@ -18,26 +18,15 @@ END_FRAME="${END_FRAME:-60}"
 KEYFRAME_STEP="${KEYFRAME_STEP:-5}"
 GPU="${GPU:-0}"
 MAX_STEPS="${MAX_STEPS:-600}"
-EVAL_STEPS_RAW="${EVAL_STEPS:-$MAX_STEPS}"
-SAVE_STEPS_RAW="${SAVE_STEPS:-$MAX_STEPS}"
+EVAL_STEPS="${EVAL_STEPS:-}"
+SAVE_STEPS="${SAVE_STEPS:-}"
 CONFIG="${CONFIG:-default_keyframe_small}"
 GLOBAL_SCALE="${GLOBAL_SCALE:-6}"
 RENDER_TRAJ_PATH="${RENDER_TRAJ_PATH:-fixed}"
 SEED="${SEED:-42}"
 EXTRA_TRAIN_ARGS="${EXTRA_TRAIN_ARGS:-}"
-
-_to_steps_array() {
-  local raw="$1"
-  raw="${raw//,/ }"
-  # shellcheck disable=SC2206
-  local arr=($raw)
-  printf '%s\n' "${arr[@]}"
-}
-
-mapfile -t EVAL_STEPS_ARR < <(_to_steps_array "$EVAL_STEPS_RAW")
-mapfile -t SAVE_STEPS_ARR < <(_to_steps_array "$SAVE_STEPS_RAW")
-EVAL_STEPS_PRINT="${EVAL_STEPS_ARR[*]}"
-SAVE_STEPS_PRINT="${SAVE_STEPS_ARR[*]}"
+EVAL_STEPS_PRINT="$MAX_STEPS"
+SAVE_STEPS_PRINT="$MAX_STEPS"
 # Split EXTRA_TRAIN_ARGS into an argv array, preserving shell-style spacing.
 EXTRA_TRAIN_ARGS_ARR=()
 if [ -n "$EXTRA_TRAIN_ARGS" ]; then
@@ -86,6 +75,43 @@ BASELINE_INIT_NPZ="${BASELINE_INIT_NPZ:-$REPO_ROOT/outputs/protocol_v1/selfcap_b
 PLANB_OUT_DIR="${PLANB_OUT_DIR:-$REPO_ROOT/outputs/plan_b/$(basename "$DATA_DIR")}"
 PLANB_INIT_NPZ="${PLANB_INIT_NPZ:-$PLANB_OUT_DIR/init_points_planb_step${KEYFRAME_STEP}.npz}"
 
+_csv_to_steps() {
+  local csv="${1:-}"
+  csv="${csv// /}"
+  if [ -z "$csv" ]; then
+    return 0
+  fi
+  IFS=',' read -ra _parts <<< "$csv"
+  for _p in "${_parts[@]}"; do
+    if [ -n "$_p" ]; then
+      printf '%s\n' "$_p"
+    fi
+  done
+}
+
+EVAL_ARGS=(--eval-steps "$MAX_STEPS")
+if [ -n "$EVAL_STEPS" ]; then
+  mapfile -t _eval_steps < <(_csv_to_steps "$EVAL_STEPS")
+  if [ "${#_eval_steps[@]}" -gt 0 ]; then
+    EVAL_ARGS=(--eval-steps "${_eval_steps[@]}")
+    EVAL_STEPS_PRINT="${_eval_steps[*]}"
+  fi
+fi
+
+SAVE_ARGS=(--save-steps "$MAX_STEPS")
+if [ -n "$SAVE_STEPS" ]; then
+  mapfile -t _save_steps < <(_csv_to_steps "$SAVE_STEPS")
+  if [ "${#_save_steps[@]}" -gt 0 ]; then
+    SAVE_ARGS=(--save-steps "${_save_steps[@]}")
+    SAVE_STEPS_PRINT="${_save_steps[*]}"
+  fi
+fi
+
+EVAL_ON_TEST_ARGS=()
+if [ "$EVAL_ON_TEST" = "1" ]; then
+  EVAL_ON_TEST_ARGS=(--eval-on-test)
+fi
+
 echo "[Plan-B Runner] data_dir:      $DATA_DIR"
 echo "[Plan-B Runner] result_dir:    $RESULT_DIR"
 echo "[Plan-B Runner] frame range:   [$START_FRAME, $END_FRAME)"
@@ -131,8 +157,8 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --start-frame "$START_FRAME" \
   --end-frame "$END_FRAME" \
   --max-steps "$MAX_STEPS" \
-  --eval-steps "${EVAL_STEPS_ARR[@]}" \
-  --save-steps "${SAVE_STEPS_ARR[@]}" \
+  "${EVAL_ARGS[@]}" \
+  "${SAVE_ARGS[@]}" \
   --seed "$SEED" \
   --train-camera-names "$TRAIN_CAMERA_NAMES" \
   --val-camera-names "$VAL_CAMERA_NAMES" \
@@ -141,8 +167,8 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" "$CONFIG" \
   --eval-sample-every-test "$EVAL_SAMPLE_EVERY_TEST" \
   --render-traj-path "$RENDER_TRAJ_PATH" \
   --global-scale "$GLOBAL_SCALE" \
-  "${EXTRA_TRAIN_ARGS_ARR[@]}" \
-  $(if [ "$EVAL_ON_TEST" = "1" ]; then echo --eval-on-test; fi)
+  "${EVAL_ON_TEST_ARGS[@]}" \
+  "${EXTRA_TRAIN_ARGS_ARR[@]}"
 
 "$VENV_PYTHON" "$THROUGHPUT_SCRIPT" "$RESULT_DIR"
 
