@@ -1,11 +1,11 @@
 # 4d-recon 项目进度（Progress）
 
-最后更新：2026-02-26  
+最后更新：2026-02-28  
 对照执行计划：`docs/execution/2026-02-12-4d-reconstruction-execution.md`
 
 ## 0. 当前状态（一句话）
 
-已完成 **协议 v1 冻结 + Plan‑B pivot（3D velocity init）**；Plan‑B 在 canonical 与 seg200_260（anti‑cherrypick）两段均显著优于 baseline（尤其 tLPIPS 大幅下降），feature-loss v2 主线继续冻结；未来 7 天 full600 预算（N=3）已用尽，进入 Writing Mode 收口与防守材料完善。
+已完成 **协议 v1 冻结 + Plan‑B 证据链闭环（v26）**；并已按 `2026-02-27` 评审拍板完成 `protocol_v2` 阶段二补齐（动静解耦 demo / VGGT 可解释材料 / Plan‑B+feature-metric 试探 + trade-off 定性证据）。`2026-02-28` 预算闸门未通过，未新增 `C2(noconf) full600`，阶段二按 **mixed trend + failure analysis** 收口。
 
 ## 1. 与原执行计划的关键差异（已记录且可辩护）
 
@@ -78,13 +78,15 @@
 
 ## 6. 当前待办（按优先级）
 
-- Writing Mode（优先）：
+- 写作/答辩收口（优先）：
+  - 以 `docs/report_pack/2026-02-27-v2/README.md` 作为阶段二证据入口，固化“能直接答辩”的阅读顺序与三类证据（定量/定性/导出）。
+  - 按需要从 `outputs/report_pack_2026-02-28.tar.gz` 提取最终离线包给评审/答辩使用。
+- （可选，条件触发）阶段二追加 full600：
+  - 仅当出现新增预算决议时，才允许执行 `C2(noconf) full600` 外推验证（见 `docs/plans/2026-02-28-owner-a-protocol-v2-c2-full600-budget-plan.md`）。
+- v26（阶段一证据链：只维护，不改变结论）：
   - 输出定性对比（side-by-side + 抽帧）：`docs/execution/2026-02-26-planb-qualitative.md`
   - 强化 negative result 防守：`notes/feature_loss_v2_failure_attribution_owner_b.md`
-- weak 主线风险仍在（作为“方法边界/负增益”证据位保留）：
-  - `control_weak_nocue_600` 在 LPIPS 上优于 `ours_weak_600`（见 `docs/report_pack/2026-02-26-v17/scoreboard.md` 风险提示）
-  - `planb_ours_weak_smoke200_w0.3_end200` 相对 `planb_init_smoke200` 仅微弱改善（ΔPSNR `+0.0056` / ΔLPIPS `-0.0003` / ΔtLPIPS `+0.00025`），结论 `No-Go`，暂不申请新增 full600（见 `notes/planb_plus_weak_smoke200_owner_a.md`）
-- 后续若要继续新增 full600：必须新建决议文件扩预算（否则不可比/不可审计）。
+  - weak 风险保留为“边界/负增益”证据位（control 优于 weak 的风险信号已记录于 `docs/report_pack/2026-02-26-v17/scoreboard.md`）
 
 ## 7. 2026-02-24 评审拍板（对后续计划的影响）
 
@@ -178,3 +180,36 @@ M2（选择性 full600）：
   - `notes/planb_verdict_writeup_owner_b.md`
 
 预算状态（7 天 full600，N=3）：已用尽（剩余 0）。
+
+## 11. 2026-02-27 评审拍板：进入“学术完善”并采用双阶段框架（protocol_v2）
+
+依据材料：
+- 同行 A：`docs/reviews/2026-02-27/review-2026-02-27.md`
+- 专家 B：`docs/reviews/2026-02-27/decisions-2026-02-27.md`
+
+结论要点（人话版）：
+- 不要求把项目“硬写回 VGGT 单主线”；相反，把已经跑通的 Plan‑B 直接纳入主线，形成 **Plan‑B（物理运动先验）→ VGGT（几何语义先验）→ 动静解耦 demo** 的完整故事。
+- `v26 + protocol_v1` 作为阶段一最终证据链保留；所有“补齐开题”的新实验统一归到 `protocol_v2`，避免口径混用。
+
+仓库落地入口（已新增）：
+- 决议：`docs/decisions/2026-02-27-dual-stage-academic-completeness.md`
+- 协议：`docs/protocols/protocol_v2.yaml`
+- 路线图：`docs/plans/2026-02-27-postreview-roadmap.md`
+
+## 12. 2026-02-28 protocol_v2 阶段二收口：trade-off 诊断 + 预算闸门
+
+阶段二证据入口（统一）：
+- `docs/report_pack/2026-02-27-v2/README.md`
+
+关键结论（人话版）：
+- full600：`planb_feat_v2_full600_lam0.005_start300_ramp200_every16` 出现 **PSNR↑ 但 LPIPS/tLPIPS↑** 的 trade-off，未形成可宣称稳定增益（见 cross-protocol 表）。
+- smoke200：`..._noconf` 显示“减轻 tLPIPS 退步”的趋势，但不足以在预算未批情况下外推为 full600 结论。
+- 预算：`2026-02-28` 未形成新增预算决议，因此不新增 `C2(noconf) full600`；按纪律收口。
+
+证据指针（最小集）：
+- cross-protocol（full600 Δ）：`docs/report_pack/2026-02-27-v2/scoreboard_full600_vs_v1.md`
+- smoke200（含 noconf）：`docs/report_pack/2026-02-27-v2/scoreboard_smoke200.md`
+- side-by-side（step599）：`outputs/qualitative/planb_vs_baseline/`
+- trade-off 口径短文：`notes/protocol_v2_stage2_tradeoff_qual.md`
+- 离线包（含 sha manifest）：`outputs/report_pack_2026-02-28.tar.gz`、`docs/report_pack/2026-02-27-v2/manifest_sha256.csv`
+- 验收增补：`docs/reviews/2026-02-27/acceptance-2026-02-27.md`

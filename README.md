@@ -4,13 +4,24 @@ This workspace tracks the execution of `docs/execution/2026-02-12-4d-reconstruct
 
 Day-to-day runnable commands live in `README.md` + `notes/demo-runbook.md`.
 
+## protocol_v2（双阶段）提交入口
+
+- 开题对外版（v2）：`4D-Reconstruction-v2.md`
+- 阶段二证据包（v2）：`docs/report_pack/2026-02-27-v2/README.md`
+- 02-27 验收记录：`docs/reviews/2026-02-27/acceptance-2026-02-27.md`
+- 说明：若本地存在 `4D-Reconstruction.md`，其定位为历史原稿/存档，不再作为提交版，避免口径打架。
+
 ## Protocol (Single Source of Truth)
 
-Frozen training/eval protocol: `docs/protocol.yaml`.
+Frozen training/eval protocol (stage-1 evidence): `docs/protocol.yaml` (-> `docs/protocols/protocol_v1.yaml`).
 
 Rule:
 - Do not silently change frame ranges/camera splits/hyperparams between runs.
-- If protocol must change, create a new `docs/protocols/protocol_v2.yaml` and update `docs/protocol.yaml`.
+- If protocol must change, create a new `docs/protocols/protocol_vX.yaml` and update `docs/protocol.yaml`.
+
+Stage-2 (opening-proposal alignment / academic completeness):
+- See decision: `docs/decisions/2026-02-27-dual-stage-academic-completeness.md`
+- New runs are documented under: `docs/protocols/protocol_v2.yaml` (kept separate to avoid breaking v26 evidence chain)
 
 ## Structure
 - `third_party/`: external repositories
