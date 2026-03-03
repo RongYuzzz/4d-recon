@@ -68,6 +68,11 @@ def _is_feature_loss_variant(run_name: str) -> bool:
     return lower.startswith("feature_loss_v1") or lower.startswith("feature_loss_v2")
 
 
+def _is_planb_feat_v2_variant(run_name: str) -> bool:
+    lower = run_name.lower()
+    return lower.startswith("planb_feat_v2_") or lower.startswith("planb_feature_loss_v2_")
+
+
 def _is_weak_v2_variant(run_name: str) -> bool:
     lower = run_name.lower()
     return lower.startswith("ours_weak_v2_") and lower.endswith("_600")
@@ -85,6 +90,8 @@ def _keep_run(run_name: str, include_weak_v2: bool) -> bool:
         return True
     if _is_planb_variant(run_name):
         return True
+    if _is_planb_feat_v2_variant(run_name):
+        return True
     if include_weak_v2 and _is_weak_v2_variant(run_name):
         return True
     return _is_strong_variant(run_name) or _is_feature_loss_variant(run_name)
@@ -101,10 +108,12 @@ def _run_order_key(run_name: str) -> tuple[int, str]:
         return (3, run_name)
     if _is_planb_variant(run_name):
         return (4, run_name)
-    if _is_feature_loss_variant(run_name):
+    if _is_planb_feat_v2_variant(run_name):
         return (5, run_name)
-    if _is_strong_variant(run_name):
+    if _is_feature_loss_variant(run_name):
         return (6, run_name)
+    if _is_strong_variant(run_name):
+        return (7, run_name)
     return (7, run_name)
 
 
@@ -118,8 +127,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--select_prefix", default="outputs/protocol_v1/")
     parser.add_argument("--step", type=int, default=599)
     parser.add_argument("--stage", default="test")
+    parser.add_argument(
+        "--delta_baseline_run",
+        default="",
+        help="If set, compute deltas against this run basename (searched across all prefixes).",
+    )
     parser.add_argument("--include_weak_v2", action="store_true")
     return parser.parse_args()
+
+
+def _pick_preferred_row(run_dir: str, prev_dir: str, preferred_prefix: str) -> bool:
+    """Return True if run_dir should replace prev_dir as the preferred choice."""
+    cand_score = (
+        0 if (preferred_prefix and run_dir.startswith(preferred_prefix)) else 1,
+        0 if "/gate1/" not in run_dir else 1,
+        len(run_dir),
+        run_dir,
+    )
+    prev_score = (
+        0 if (preferred_prefix and prev_dir.startswith(preferred_prefix)) else 1,
+        0 if "/gate1/" not in prev_dir else 1,
+        len(prev_dir),
+        prev_dir,
+    )
+    return cand_score < prev_score
 
 
 def main() -> int:
@@ -131,13 +162,12 @@ def main() -> int:
         raise FileNotFoundError(f"metrics csv missing: {metrics_csv}")
 
     selected: dict[str, dict[str, str]] = {}
+    delta_baseline_row: dict[str, str] | None = None
     with metrics_csv.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             run_dir = (row.get("run_dir") or "").strip()
             if args.select_contains and args.select_contains not in run_dir:
-                continue
-            if args.select_prefix and not run_dir.startswith(args.select_prefix):
                 continue
             if (row.get("stage") or "").strip() != args.stage:
                 continue
@@ -149,6 +179,18 @@ def main() -> int:
                 continue
 
             run_name = Path(run_dir.rstrip("/")).name
+
+            if args.delta_baseline_run and run_name == args.delta_baseline_run:
+                prev = delta_baseline_row
+                if prev is None:
+                    delta_baseline_row = row
+                else:
+                    prev_dir = (prev.get("run_dir") or "").strip()
+                    if _pick_preferred_row(run_dir, prev_dir, args.select_prefix):
+                        delta_baseline_row = row
+
+            if args.select_prefix and not run_dir.startswith(args.select_prefix):
+                continue
             if not _keep_run(run_name, args.include_weak_v2):
                 continue
 
@@ -160,26 +202,15 @@ def main() -> int:
             # Prefer canonical-looking path when multiple rows share same run basename.
             cand = run_dir
             prev_dir = (prev.get("run_dir") or "").strip()
-            cand_score = (
-                0 if cand.startswith(args.select_prefix) else 1,
-                0 if "/gate1/" not in cand else 1,
-                len(cand),
-                cand,
-            )
-            prev_score = (
-                0 if prev_dir.startswith(args.select_prefix) else 1,
-                0 if "/gate1/" not in prev_dir else 1,
-                len(prev_dir),
-                prev_dir,
-            )
-            if cand_score < prev_score:
+            if _pick_preferred_row(cand, prev_dir, args.select_prefix):
                 selected[run_name] = row
 
     baseline_row = selected.get("baseline_600")
-    baseline_psnr = _to_float((baseline_row or {}).get("psnr", ""))
-    baseline_ssim = _to_float((baseline_row or {}).get("ssim", ""))
-    baseline_lpips = _to_float((baseline_row or {}).get("lpips", ""))
-    baseline_tlpips = _to_float((baseline_row or {}).get("tlpips", ""))
+    delta_row = delta_baseline_row if args.delta_baseline_run else baseline_row
+    baseline_psnr = _to_float((delta_row or {}).get("psnr", ""))
+    baseline_ssim = _to_float((delta_row or {}).get("ssim", ""))
+    baseline_lpips = _to_float((delta_row or {}).get("lpips", ""))
+    baseline_tlpips = _to_float((delta_row or {}).get("tlpips", ""))
 
     lines: list[str] = []
     lines.append("# Protocol Scoreboard")
@@ -189,6 +220,10 @@ def main() -> int:
     lines.append(
         f"- Filter: stage=`{args.stage}`, step=`{args.step}`, contains=`{args.select_contains}`, prefix=`{args.select_prefix}`"
     )
+    if args.delta_baseline_run:
+        lines.append(f"- Delta baseline: `{args.delta_baseline_run}`")
+        if delta_row is None:
+            lines.append("- Delta baseline status: <missing in metrics.csv for this filter>")
     lines.append("")
     lines.append(
         "| run | PSNR | SSIM | LPIPS | tLPIPS | ΔPSNR | ΔSSIM | ΔLPIPS | ΔtLPIPS |"

@@ -745,6 +745,21 @@ class Config:
     """If True and ckpt_path is provided, load checkpoint and export PLY/videos
     without training. Useful for generating outputs from a trained model."""
 
+    # ==================== Export Filters (Optional) ====================
+    export_vel_filter: Literal["none", "static_only", "dynamic_only"] = "none"
+    """Optional velocity-magnitude filter applied only during --export-only.
+
+    - none: export all Gaussians (default)
+    - static_only: keep Gaussians with ||v|| < export_vel_threshold
+    - dynamic_only: keep Gaussians with ||v|| >= export_vel_threshold
+
+    This is intended for qualitative demos like "render background only" by
+    removing fast-moving Gaussians.
+    """
+
+    export_vel_threshold: float = 0.0
+    """Velocity magnitude threshold for export_vel_filter (must be >0 when filter != 'none')."""
+
     def adjust_steps(self, factor: float):
         """Scale training steps by factor."""
         self.eval_steps = [int(i * factor) for i in self.eval_steps]
@@ -2996,6 +3011,8 @@ class FreeTime4DRunner:
         step = self.start_step - 1  # The step at which checkpoint was saved
         print(f"\n[Export] Exporting from checkpoint at step {step}")
 
+        self._maybe_apply_export_vel_filter()
+
         if self.world_rank == 0:
             # Render trajectory videos
             self.render_traj(step=step)
@@ -3005,6 +3022,67 @@ class FreeTime4DRunner:
                 self.export_ply_sequence(step=step)
 
         print("[Export] Complete!")
+
+    def _maybe_apply_export_vel_filter(self) -> None:
+        """Optionally filter self.splats by velocity magnitude for export-only qualitative demos."""
+        cfg = self.cfg
+        mode = str(cfg.export_vel_filter).strip().lower()
+        if mode == "none":
+            return
+        if not cfg.export_only:
+            raise ValueError("export_vel_filter is only supported with --export-only")
+
+        threshold = float(cfg.export_vel_threshold)
+        if threshold <= 0.0:
+            raise ValueError(
+                "export_vel_threshold must be > 0 when export_vel_filter is enabled "
+                f"(got {threshold})"
+            )
+
+        if "velocities" not in self.splats:
+            raise ValueError("Cannot apply export_vel_filter: splats missing 'velocities'")
+
+        vel = self.splats["velocities"].detach()
+        if vel.ndim != 2 or vel.shape[1] != 3:
+            raise ValueError(f"splats['velocities'] must be [N,3], got {tuple(vel.shape)}")
+
+        vel_mag = torch.linalg.vector_norm(vel, dim=-1)  # [N]
+        if mode == "static_only":
+            keep = vel_mag < threshold
+        elif mode == "dynamic_only":
+            keep = vel_mag >= threshold
+        else:
+            raise ValueError(f"export_vel_filter must be one of none|static_only|dynamic_only, got {mode!r}")
+
+        n_total = int(keep.numel())
+        n_keep = int(keep.sum().item())
+        if n_keep <= 0:
+            raise ValueError(
+                "export_vel_filter removed all Gaussians. "
+                f"mode={mode} threshold={threshold} n_total={n_total}"
+            )
+
+        new_params: dict[str, torch.nn.Parameter] = {}
+        for name, p in self.splats.items():
+            t = p.detach()
+            if t.ndim == 0:
+                raise ValueError(f"unexpected scalar splat param: {name}")
+            if t.shape[0] != n_total:
+                raise ValueError(
+                    "splat param size mismatch: "
+                    f"{name}.shape[0]={int(t.shape[0])} expected={n_total}"
+                )
+            t_f = t[keep].contiguous()
+            new_params[name] = torch.nn.Parameter(t_f)
+
+        self.splats = torch.nn.ParameterDict(new_params).to(self.device)
+        self.grad_accum = torch.zeros(n_keep, device=self.device)
+        self.grad_count = 0
+        kept_ratio = float(n_keep) / float(max(1, n_total))
+        print(
+            "[Export] applied export_vel_filter: "
+            f"mode={mode} threshold={threshold:.6f} kept={n_keep}/{n_total} ({kept_ratio:.3f})"
+        )
 
     def _turbo_colormap(self, values: Tensor) -> Tensor:
         """

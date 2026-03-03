@@ -87,6 +87,10 @@ def collect_files(repo_root: Path) -> list[Path]:
     if not outputs.exists():
         return sorted(files)
 
+    # Config snapshots are a lightweight truth source for every run.
+    files.update(p for p in outputs.glob("**/cfg.yml") if p.is_file())
+    files.update(p for p in outputs.glob("**/cfg_before_resume_from_*.yml") if p.is_file())
+
     stats_latest_val = _latest_per_run(
         outputs.glob("**/stats/val_step*.json"),
         run_from_file=lambda p: p.parent.parent,
@@ -115,16 +119,34 @@ def collect_files(repo_root: Path) -> list[Path]:
     if report_pack_dir.exists():
         files.update(p for p in report_pack_dir.rglob("*") if p.is_file())
 
+    # Cue mining evidence (lightweight only): include quality + viz, exclude heavy pseudo_masks.npz.
+    cue_dir = outputs / "cue_mining"
+    if cue_dir.exists():
+        files.update(p for p in cue_dir.glob("**/quality.json") if p.is_file())
+        files.update(p for p in cue_dir.glob("**/viz/*") if p.is_file())
+
     # Plan-B audit artifacts: velocity init + self-check stats.
     planb_dir = outputs / "plan_b"
     if planb_dir.exists():
         files.update(p for p in planb_dir.glob("**/velocity_stats.json") if p.is_file())
         files.update(p for p in planb_dir.glob("**/init_points_planb*.npz") if p.is_file())
 
+    # VGGT cache truth sources: include cache NPZ + meta + lightweight visualizations.
+    vggt_cache_dir = outputs / "vggt_cache"
+    if vggt_cache_dir.exists():
+        files.update(p for p in vggt_cache_dir.glob("**/gt_cache.npz") if p.is_file())
+        files.update(p for p in vggt_cache_dir.glob("**/meta.json") if p.is_file())
+        files.update(p for p in vggt_cache_dir.glob("**/viz_*/*") if p.is_file())
+
     # Strong-fusion audit: include lightweight correspondence visualizations.
     corr_dir = outputs / "correspondences"
     if corr_dir.exists():
         files.update(p for p in corr_dir.glob("**/viz/*") if p.is_file())
+
+    # Gate framediff visualizations (lightweight, useful for audits).
+    gate_viz_dir = outputs / "viz" / "gate_framediff"
+    if gate_viz_dir.exists():
+        files.update(p for p in gate_viz_dir.rglob("*") if p.is_file())
 
     # Plan-B qualitative audit: side-by-side videos and selected frame snapshots.
     qual_dir = outputs / "qualitative" / "planb_vs_baseline"
