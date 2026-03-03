@@ -1,0 +1,2 @@
+- weak_invert_vggt_smoke200 训练用 mask（锁定备份路径）：outputs/cue_mining/_waiting_thuman/selfcap_seg300_360_vggt1b_depthdiff_q0.995_ds4_med3_backup_before_strict_rerun_20260303T084305Z/pseudo_masks_invert.npz
+- 该文件 sha256=7f57a7def6521df11f4f198dd954a45872a815adcf1bafeedc41d21b81ec9449

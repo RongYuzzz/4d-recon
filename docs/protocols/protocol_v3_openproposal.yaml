@@ -1,0 +1,42 @@
+id: protocol_v3_openproposal_thuman4_subject00_8cam60f
+frozen_date: "2026-03-03"
+
+dataset:
+  name: thuman4.0
+  # local-eval only (do NOT commit frames/masks)
+  root: "data/thuman4_subject00_8cam60f"
+  frames:
+    start: 0
+    end_exclusive: 60
+  cameras:
+    used: ["02", "03", "04", "05", "06", "07", "08", "09"]
+    train: ["02", "03", "04", "05", "06", "07"]
+    val: ["08"]
+    test: ["09"]
+  image_downscale: 2
+  mask:
+    available: true
+    type: "dataset-provided foreground matte"
+    binarize_threshold: 0.5
+
+metrics:
+  full_frame:
+    - psnr
+    - ssim
+    - lpips
+    - tlpips
+  foreground_masked:
+    # NOTE: only valid when dataset provides masks/
+    - psnr_fg
+    - lpips_fg
+  segmentation:
+    # NOTE: enable only when pred_fg source is defined (Phase 2+)
+    - miou_fg
+
+masked_eval:
+  bbox_margin_px: 32
+  roi_pipeline: "mask -> bbox crop (+margin) -> fill-black outside mask -> metric"
+  mask_source_default: "dataset"
+  pred_fg_default:
+    type: "pseudo_masks.npz"
+    threshold: 0.5
