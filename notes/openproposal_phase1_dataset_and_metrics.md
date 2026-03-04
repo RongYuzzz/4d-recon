@@ -27,6 +27,9 @@
   4. fill-black outside binary foreground mask within the crop;
   5. compute `psnr_fg` and `lpips_fg` on masked crops.
 - Optional `miou_fg` is supported when GT mask + pseudo mask are both available.
+- LPIPS backend note:
+  - `scripts/eval_masked_metrics.py --lpips_backend auto` computes **real LPIPS** (requires `torch+lpips`).
+  - `--lpips_backend dummy` is a stop-loss fallback (L1-like proxy) for contract / environments without lpips; values are **not comparable** to real LPIPS.
 
 ## Phase 1 gate status (2026-03-04)
 
@@ -41,7 +44,7 @@
   - Training smoke600 output: `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600`.
   - Masked eval output: `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599.json`.
   - Key test metrics (step 599): `psnr=16.1520`, `ssim=0.5621`, `lpips=0.7325`, `tlpips=0.0071`.
-  - Key masked metrics (step 599): `psnr_fg=16.8066`, `lpips_fg=0.0490`, `num_fg_frames=60`.
+  - Key masked metrics (step 599, `lpips_backend=auto`): `psnr_fg=16.8066`, `lpips_fg=0.2439`, `num_fg_frames=60`.
 
 ## Repro checklist (completed on 2026-03-04)
 

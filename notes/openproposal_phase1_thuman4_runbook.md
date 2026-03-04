@@ -24,13 +24,17 @@ python3 scripts/thuman4_inventory.py \
   --output_dir "$DATA_DIR"
 ```
 
+NOTE:
+- 请检查输出 JSON 的 `picked_cameras`，并避免使用 `cam00`（在本机 THUman4.0 的前 60 帧里存在缺帧）。
+- 推荐固定使用 `cam01..cam08` → `02..09`（见下方 adapter 命令）。
+
 ## 2) 运行 adapter 生成 FreeTime 数据布局（images/ + masks/）
 
 ```bash
 python3 scripts/adapt_thuman4_release_to_freetime.py \
   --input_dir "$THUMAN_SUBJECT_DIR" \
   --output_dir "$DATA_DIR" \
-  --camera_ids "000,001,002,003,004,005,006,007" \
+  --camera_ids "cam01,cam02,cam03,cam04,cam05,cam06,cam07,cam08" \
   --output_camera_ids "02,03,04,05,06,07,08,09" \
   --frame_start 0 \
   --num_frames 60 \
@@ -94,13 +98,20 @@ DATA_DIR="$DATA_DIR" MAX_STEPS=200 GPU=0 VENV_PYTHON="$VENV_PYTHON" \
 ## 6) 前景掩膜指标（`psnr_fg` / `lpips_fg`）
 
 ```bash
-python3 scripts/eval_masked_metrics.py \
+EVAL_PY="python3"
+LPIPS_BACKEND="dummy"
+if "$VENV_PYTHON" -c "import lpips" >/dev/null 2>&1; then
+  EVAL_PY="$VENV_PYTHON"
+  LPIPS_BACKEND="auto"
+fi
+
+OMP_NUM_THREADS=1 "$EVAL_PY" scripts/eval_masked_metrics.py \
   --data_dir "$DATA_DIR" \
   --result_dir "$RESULT_DIR" \
   --stage test \
   --step 199 \
   --mask_source dataset \
-  --lpips_backend auto
+  --lpips_backend "$LPIPS_BACKEND"
 ```
 
 ## 7) 合规提醒（必须遵守）
