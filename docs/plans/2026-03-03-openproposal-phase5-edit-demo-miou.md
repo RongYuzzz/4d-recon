@@ -151,6 +151,7 @@ git commit -m "docs(notes): Phase5 velocity stats + tau candidates for edit demo
 REPO_ROOT="$(pwd)"
 export OMP_NUM_THREADS=1  # 避免 libgomp “OMP_NUM_THREADS=0” 警告刷屏
 export VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
+export PATH="$(dirname "$VENV_PYTHON"):$PATH"  # fix: "Ninja is required to load C++ extensions"
 export PY="$VENV_PYTHON"
 export TRAINER="$REPO_ROOT/third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py"
 export CONFIG="default_keyframe_small"
@@ -274,7 +275,17 @@ if [ ! -f "$BAK_JSON" ]; then
 fi
 
 # 1) run miou eval (writes to stats_masked/test_step0599.json)
-python3 scripts/eval_masked_metrics.py \
+REPO_ROOT="$(pwd)"
+VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
+EVAL_PY="python3"
+LPIPS_BACKEND="dummy"
+if "$VENV_PYTHON" -c "import lpips" >/dev/null 2>&1; then
+  # Recommended: real LPIPS (consistent with Phase 3/4 tables)
+  EVAL_PY="$VENV_PYTHON"
+  LPIPS_BACKEND="auto"
+fi
+
+OMP_NUM_THREADS=1 "$EVAL_PY" scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
   --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600 \
   --stage test \
@@ -282,7 +293,7 @@ python3 scripts/eval_masked_metrics.py \
   --mask_source dataset \
   --pred_mask_npz "$PRED_NPZ" \
   --compute_miou \
-  --lpips_backend dummy
+  --lpips_backend "$LPIPS_BACKEND"
 
 # 2) snapshot miou output
 cp "$BASE_JSON" \
