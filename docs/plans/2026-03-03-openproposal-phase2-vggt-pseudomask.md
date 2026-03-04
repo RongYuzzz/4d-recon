@@ -204,7 +204,23 @@ Run（diff）：
 ```bash
 RUN_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600"
 
-python3 scripts/eval_masked_metrics.py \
+BASE_JSON="$RUN_DIR/stats_masked/test_step0599.json"
+BAK_JSON="$RUN_DIR/stats_masked/test_step0599_before_phase2_miou.json"
+if [ -f "$BASE_JSON" ] && [ ! -f "$BAK_JSON" ]; then
+  cp "$BASE_JSON" "$BAK_JSON"
+fi
+
+REPO_ROOT="$(pwd)"
+VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
+EVAL_PY="python3"
+LPIPS_BACKEND="dummy"
+if "$VENV_PYTHON" -c "import lpips" >/dev/null 2>&1; then
+  # Prefer real LPIPS if available (consistent with Phase 3/4 tables).
+  EVAL_PY="$VENV_PYTHON"
+  LPIPS_BACKEND="auto"
+fi
+
+OMP_NUM_THREADS=1 "$EVAL_PY" scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
   --result_dir "$RUN_DIR" \
   --stage test \
@@ -212,7 +228,7 @@ python3 scripts/eval_masked_metrics.py \
   --mask_source dataset \
   --pred_mask_npz outputs/cue_mining/openproposal_thuman4_s00_diff_q0.995_ds4_med3/pseudo_masks.npz \
   --compute_miou \
-  --lpips_backend dummy
+  --lpips_backend "$LPIPS_BACKEND"
 
 # Avoid overwriting the vggt result (evaluator output path is fixed).
 cp "$RUN_DIR/stats_masked/test_step0599.json" "$RUN_DIR/stats_masked/test_step0599_miou_diff.json"
@@ -222,7 +238,16 @@ Run（vggt）：
 ```bash
 RUN_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600"
 
-python3 scripts/eval_masked_metrics.py \
+REPO_ROOT="$(pwd)"
+VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
+EVAL_PY="python3"
+LPIPS_BACKEND="dummy"
+if "$VENV_PYTHON" -c "import lpips" >/dev/null 2>&1; then
+  EVAL_PY="$VENV_PYTHON"
+  LPIPS_BACKEND="auto"
+fi
+
+OMP_NUM_THREADS=1 "$EVAL_PY" scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
   --result_dir "$RUN_DIR" \
   --stage test \
@@ -230,9 +255,16 @@ python3 scripts/eval_masked_metrics.py \
   --mask_source dataset \
   --pred_mask_npz outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3/pseudo_masks.npz \
   --compute_miou \
-  --lpips_backend dummy
+  --lpips_backend "$LPIPS_BACKEND"
 
 cp "$RUN_DIR/stats_masked/test_step0599.json" "$RUN_DIR/stats_masked/test_step0599_miou_vggt.json"
+
+# Restore Phase 1 masked baseline (avoid confusion for later phases).
+BASE_JSON="$RUN_DIR/stats_masked/test_step0599.json"
+BAK_JSON="$RUN_DIR/stats_masked/test_step0599_before_phase2_miou.json"
+if [ -f "$BAK_JSON" ]; then
+  cp "$BAK_JSON" "$BASE_JSON"
+fi
 ```
 
 Expected:
