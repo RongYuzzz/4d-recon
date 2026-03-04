@@ -8,6 +8,10 @@
 
 **Tech Stack:** `scripts/export_velocity_stats.py`, FreeTimeGsVanilla trainer (`--export-only`, `--export-vel-filter`, `--export-vel-threshold`), `scripts/eval_masked_metrics.py`, `pytest`。
 
+**2026-03-04 状态更新（来自 Phase 4，影响 Phase 5 默认选择）：**
+- Phase 4 的 VGGT feature loss 未提升 `psnr_fg/lpips_fg`（已止损）；Phase 5 以“可播放的 removal/edit demo”作为主交付，不再绑定 Phase 4 的最优指标。
+- 经验坑：`init_points_planb_step5.npz` 里可能出现 `velocities=0`（Plan‑B init 不提供速度）；**但 ckpt 内的 learned velocities 通常非 0**，velocity-filter demo 仍可做。tau 选择以 **ckpt 的 `||v||` 分布**为准（不是 init 的 p50/p90）。
+
 ---
 
 ### Task 0: Gate Check（Phase 1/4 至少有一个可用 ckpt）
@@ -21,7 +25,8 @@
 
 候选（至少一个存在即可）：
 - `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/ckpts/ckpt_599.pt`
-- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_600/ckpts/ckpt_599.pt`
+- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/ckpts/ckpt_599.pt`
+- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_lam0.005_600_sameinit/ckpts/ckpt_599.pt`
 
 Run:
 ```bash
@@ -85,10 +90,44 @@ Expected:
 
 **Step 3: 选 tau（可解释，且不调参成无底洞）**
 
-在 `notes/openproposal_phase5_edit_demo.md` 里写死：
-- `tau_low = p50(||v||)`（更“激进”的动态分离）
-- `tau_high = p90(||v||)`（更“保守”的动态分离）
+在 `notes/openproposal_phase5_edit_demo.md` 里写死（以 `notes/openproposal_phase5_velocity_stats_${CKPT_RUN}.md` 的 **step599 (ckpt)** 小节为准）：
+- `tau_low = p50(||v||_ckpt)`（更“激进”的动态分离）
+- `tau_high = p90(||v||_ckpt)`（更“保守”的动态分离）
 - 最终 `tau_final` 二选一（以 demo 可解释性为准）
+
+**Step 3.5（推荐）：在真正跑 export 之前，先做 keep ratio 的 CPU 自检（避免 threshold 选到“全删光”）**
+
+Run（只读 ckpt，不用 GPU）：
+```bash
+TAU_LOW="<TAU_LOW>"
+TAU_HIGH="<TAU_HIGH>"
+
+python3 - <<PY
+import numpy as np
+import torch
+from pathlib import Path
+
+ckpt_path = Path("${CKPT_PATH}")
+ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+vel = ckpt["splats"]["velocities"]
+if torch.is_tensor(vel):
+  vel = vel.detach().cpu().numpy()
+vel = np.asarray(vel, dtype=np.float64)
+speed = np.linalg.norm(vel, axis=1)
+for tau_s in ["${TAU_LOW}", "${TAU_HIGH}"]:
+  tau = float(tau_s)
+  if tau <= 0:
+    print("tau must be > 0, got", tau)
+    continue
+  r_static = float((speed < tau).mean())
+  r_dyn = float((speed >= tau).mean())
+  print("tau", tau, "static_ratio(<tau)", r_static, "dynamic_ratio(>=tau)", r_dyn)
+PY
+```
+
+Expected:
+- 两个 tau 下 static/dynamic ratio 都不是 0（否则 export 会报 “removed all Gaussians”）
+- 若某一侧过于极端（例如 <1% 或 >99%），优先换另一个 tau 或调整到 `p70/p80`（最多改 1 次，止损）
 
 **Step 4: Commit（仅文档）**
 
@@ -110,6 +149,7 @@ git commit -m "docs(notes): Phase5 velocity stats + tau candidates for edit demo
 
 ```bash
 REPO_ROOT="$(pwd)"
+export OMP_NUM_THREADS=1  # 避免 libgomp “OMP_NUM_THREADS=0” 警告刷屏
 export VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
 export PY="$VENV_PYTHON"
 export TRAINER="$REPO_ROOT/third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py"
@@ -213,15 +253,27 @@ bash scripts/make_side_by_side_video.sh \
 
 **Step 1: 确认 Phase 2 的 pred mask 存在**
 
-Run（选择 vggt 或 diff 任一作为 pred_fg）：
+> 如果你已经在 Phase 2 产出了 `test_step0599_miou_{diff,vggt}.json`，可直接引用并跳过本 Task。  
+> 否则按下面流程生成一个 Phase 5 的 miou 快照（注意：该 miou 只是“前景一致性体检”，不等价人工实例分割）。
+
+Run（默认用 diff q0.950；也可替换为 vggt/diff 的其他 tag）：
 ```bash
-PRED_NPZ="outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3/pseudo_masks.npz"
+PRED_NPZ="outputs/cue_mining/openproposal_thuman4_s00_diff_q0.950_ds4_med3/pseudo_masks.npz"
 test -f "$PRED_NPZ"
 ```
 
 **Step 2: 用 anchor run 计算 `miou_fg`（gt=dataset masks）**
 
 ```bash
+# 0) backup current masked eval (avoid accidental overwrite)
+BASE_JSON="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599.json"
+BAK_JSON="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599_before_phase5_miou.json"
+test -f "$BASE_JSON"
+if [ ! -f "$BAK_JSON" ]; then
+  cp "$BASE_JSON" "$BAK_JSON"
+fi
+
+# 1) run miou eval (writes to stats_masked/test_step0599.json)
 python3 scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
   --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600 \
@@ -232,10 +284,12 @@ python3 scripts/eval_masked_metrics.py \
   --compute_miou \
   --lpips_backend dummy
 
-# Avoid overwriting other masked eval outputs.
-cp \
-  "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599.json" \
+# 2) snapshot miou output
+cp "$BASE_JSON" \
   "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599_miou_phase5.json"
+
+# 3) restore original masked eval json (keep baseline stable for later phases)
+cp "$BAK_JSON" "$BASE_JSON"
 ```
 
 Expected:
