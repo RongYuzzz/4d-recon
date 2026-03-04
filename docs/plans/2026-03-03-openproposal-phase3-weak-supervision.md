@@ -230,7 +230,7 @@ VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/p
 DATA_DIR="data/thuman4_subject00_8cam60f" \
 RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600" \
 GPU=0 MAX_STEPS=600 VENV_PYTHON="$VENV_PYTHON" \
-bash scripts/run_train_planb_init_selfcap.sh
+bash scripts/run_train_planb_init_selfcap.sh "$RESULT_DIR"
 ```
 
 Expected:
@@ -449,9 +449,13 @@ OUT_DIR="outputs/qualitative_local/openproposal_phase3"
 mkdir -p "$OUT_DIR"
 
 bash scripts/make_side_by_side_video.sh \
-  "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/videos/traj_4d_step599.mp4" \
-  "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_diffmaskinv_q0.950_w0.8_600/videos/traj_4d_step599.mp4" \
-  "$OUT_DIR/planb_vs_weak_step599.mp4"
+  --left "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/videos/traj_4d_step599.mp4" \
+  --right "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_diffmaskinv_q0.950_w0.8_600/videos/traj_4d_step599.mp4" \
+  --out_dir "$OUT_DIR" \
+  --out_name "planb_vs_weak_step599.mp4" \
+  --left_label "planb_init_600" \
+  --right_label "weak_diffmaskinv_q0.950_w0.8_600" \
+  --overwrite
 ```
 
 Expected:
