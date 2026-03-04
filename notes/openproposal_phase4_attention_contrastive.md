@@ -37,6 +37,7 @@ Same-init reruns (**valid comparison set**):
   - Meta: `/root/autodl-tmp/projects/4d-recon/outputs/vggt_cache/openproposal_thuman4_s00_tokenproj_l17_d32_s20260225_f0_n60_cam8_ds4_fd0.10/meta.json`
 - Masked eval口径:
   - `mask_source=dataset`, `bbox_margin_px=32`, `mask_thr=0.5`
+  - `lpips_backend=auto`（real LPIPS；通过 FreeTimeGsVanilla venv 执行）
   - snapshot文件：`stats_masked/test_step0599_phase4.json`
 
 ## 3) Metrics (Baseline vs Same-Init Only)
@@ -74,9 +75,13 @@ Phase 4 主目标（`psnr_fg ↑` + `lpips_fg ↓`）:
 
 4. **训练日志（TB 标量）显示 correspondence loss 全程为 0**  
    在两条 same-init run 的 `tb/events.out.tfevents.*` 中：
-   - `loss/corr_raw`: 全 0（nonzero ratio = 0.0）
-   - `loss_weighted/corr`: 全 0（nonzero ratio = 0.0）
-   - `vggt_feat/active` 有值（8.0），但有效约束主要来自弱 feature 项，且末期趋零。
+   - `loss/corr_raw`: 全 0（nonzero ratio = 0.0；**预期**，因为 `lambda_corr=0` 且未启用 temporal corr）
+   - `loss_weighted/corr`: 全 0（nonzero ratio = 0.0；**预期**，同上）
+   - feature loss 侧的 TB tag 为 `loss/feat_raw` 与 `loss_weighted/feat`：
+     - 注意 `vggt_feat_every=8` 且 `tb_every=50`，因此在 TB 标量里只有每 200 step（LCM）才会看到非零（例如 step 0/200/400）；其他 tb step 记录为 0 仅表示该 step 未计算 feature loss，并不意味着“趋零”。
+     - `lam=0.01`（sameinit）：`loss_weighted/feat` 在 step 200/400 非零（约 `0.005353` / `0.009250`）
+     - `lam=0.005`（sameinit）：`loss_weighted/feat` 在 step 200/400 非零（约 `0.002731` / `0.004617`）
+   - `vggt_feat/active` 有值（8.0；在 step 0/200/400 记录）
 
 5. **可解释证据已生成（top-k token temporal match）**  
    - `/root/autodl-tmp/projects/4d-recon/outputs/qualitative_local/openproposal_phase4/tokenproj_topk/token_top30_cam09_frame000000_to_000001.jpg`
