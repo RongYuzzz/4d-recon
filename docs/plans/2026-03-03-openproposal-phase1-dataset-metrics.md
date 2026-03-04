@@ -8,6 +8,13 @@
 
 **Tech Stack:** Python (`numpy`, `Pillow`), optional `torch+lpips`（仅评测时用）, COLMAP CLI, repo scripts (`scripts/export_triangulation_from_colmap_sparse.py`, existing runners), `pytest`.
 
+**2026-03-04 状态更新（重要）：**
+- 本机 THUman4.0 `subject00` 已解压到：`data/raw/thuman4/subject00`（包含 `images/` 与 `masks/`）
+- THUman 的 `masks/` 输入是 `*.jpg`（不是 `*.png`）；本 repo 的 adapter 会输出为 `masks/<cam>/<frame>.png`
+- `cam00` 在前 60 帧里存在缺帧（至少 `00000020/00000044`），会导致 adapter 失败；本 Phase 1 推荐直接用 `cam01..cam08`
+
+> 若你当前 repo 已包含 `scripts/adapt_thuman4_release_to_freetime.py` / `scripts/eval_masked_metrics.py` 等脚本，则 **Task 1–5 属于“已落地的实现过程”**，执行时可直接跳到 **Task 6**。
+
 ---
 
 ### Task 0: Preflight（环境与合规）
@@ -34,6 +41,14 @@ Run（仅自检，不需要改代码）：
 Expected:
 - COLMAP 可用
 - `numpy` / `Pillow` 可 import
+
+**Step 3: 确认 THUman raw 已就绪（本机路径）**
+
+Run:
+```bash
+test -d data/raw/thuman4/subject00/images
+test -d data/raw/thuman4/subject00/masks
+```
 
 ---
 
@@ -1048,19 +1063,21 @@ git commit -m "feat(eval): add fg-masked PSNR/LPIPS evaluator (local-eval)"
 
 **Step 1: 下载并适配数据（本机路径，不入库）**
 
-Run（示例，按你真实下载路径替换）：
+Run（本机直接可用；`cam00` 前 60 帧缺帧，故不选）：
 ```bash
-THUMAN_SUBJECT_DIR="/path/to/THUman4.0/subject00"
-OUT_DATA_DIR="data/thuman4_subject00_8cam60f"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+THUMAN_SUBJECT_DIR="$REPO_ROOT/data/raw/thuman4/subject00"
+OUT_DATA_DIR="$REPO_ROOT/data/thuman4_subject00_8cam60f"
 
 # NOTE:
 # - --camera_ids 必须与 "$THUMAN_SUBJECT_DIR/images/<camera_id>/" 的子目录名一致。
-# - 下面的 cam0..cam7 只是示例；以你本机 THUman4.0 release 的实际命名为准。
+# - 本机 `subject00` 实际相机名是 `cam00..cam23`。
+# - `cam00` 在 [0,60) 内缺帧（至少 20/44），因此这里用 cam01..cam08。
 
 python3 scripts/adapt_thuman4_release_to_freetime.py \
   --input_dir "$THUMAN_SUBJECT_DIR" \
   --output_dir "$OUT_DATA_DIR" \
-  --camera_ids "cam0,cam1,cam2,cam3,cam4,cam5,cam6,cam7" \
+  --camera_ids "cam01,cam02,cam03,cam04,cam05,cam06,cam07,cam08" \
   --output_camera_ids "02,03,04,05,06,07,08,09" \
   --frame_start 0 \
   --num_frames 60 \
@@ -1071,7 +1088,7 @@ python3 scripts/adapt_thuman4_release_to_freetime.py \
 
 Expected:
 - `data/thuman4_subject00_8cam60f/images/02/000000.jpg` 存在
-- `data/thuman4_subject00_8cam60f/masks/02/000000.png` 存在
+- `data/thuman4_subject00_8cam60f/masks/02/000000.png` 存在（注意：raw 的 mask 是 jpg，但 adapter 输出为 png）
 
 **Step 2: 跑 COLMAP + triangulation（按 Task 3/4 runbook）**
 
@@ -1079,22 +1096,30 @@ Expected:
 - `data/thuman4_subject00_8cam60f/sparse/0/{cameras,images,points3D}.bin` 存在
 - `data/thuman4_subject00_8cam60f/triangulation/points3d_frame000000.npy` 存在
 
-**Step 3: 跑 planb_init smoke600（复用现有 runner，改 DATA_DIR/RESULT_DIR）**
+**Step 3: 跑 planb_init smoke200（先快跑，确认闭环；如需再扩到 600）**
 
 Run:
 ```bash
-REPO_ROOT="$(pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
 
-DATA_DIR="data/thuman4_subject00_8cam60f" \
-RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600" \
-GPU=0 MAX_STEPS=600 VENV_PYTHON="$VENV_PYTHON" \
-bash scripts/run_train_planb_init_selfcap.sh
+DATA_DIR="$REPO_ROOT/data/thuman4_subject00_8cam60f" \
+RESULT_DIR="$REPO_ROOT/outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_smoke200" \
+GPU=0 MAX_STEPS=200 EVAL_STEPS=199 SAVE_STEPS=199 VENV_PYTHON="$VENV_PYTHON" \
+bash scripts/run_train_planb_init_selfcap.sh "$RESULT_DIR"
 ```
 
 Expected:
-- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats/test_step0599.json`
-- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/renders/test_step599_0000.png`
+- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_smoke200/stats/test_step0199.json`
+- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_smoke200/renders/test_step199_0000.png`
+
+（可选）如需把 smoke 扩到 600（更接近后续 Phase 的对照尺度）：
+```bash
+DATA_DIR="$REPO_ROOT/data/thuman4_subject00_8cam60f" \
+RESULT_DIR="$REPO_ROOT/outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600" \
+GPU=0 MAX_STEPS=600 EVAL_STEPS=599 SAVE_STEPS=599 VENV_PYTHON="$VENV_PYTHON" \
+bash scripts/run_train_planb_init_selfcap.sh "$RESULT_DIR"
+```
 
 **Step 4: 跑 fg-masked eval（dataset mask）**
 
@@ -1102,16 +1127,28 @@ Run:
 ```bash
 python3 scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
-  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600 \
+  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_smoke200 \
   --stage test \
-  --step 599 \
+  --step 199 \
+  --mask_source dataset \
+  --bbox_margin_px 32 \
+  --lpips_backend auto
+```
+
+Expected:
+- `.../stats_masked/test_step0199.json` 存在，包含 `psnr_fg`/`lpips_fg`
+
+（可选）若你的环境没有 torch+lpips，先用 dummy 跑通 contract：
+```bash
+python3 scripts/eval_masked_metrics.py \
+  --data_dir data/thuman4_subject00_8cam60f \
+  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_smoke200 \
+  --stage test \
+  --step 199 \
   --mask_source dataset \
   --bbox_margin_px 32 \
   --lpips_backend dummy
 ```
-
-Expected:
-- `.../stats_masked/test_step0599.json` 存在，包含 `psnr_fg`/`lpips_fg`
 
 **Step 5: 写 1 页说明文档（Phase 1 总结）**
 
