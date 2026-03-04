@@ -8,6 +8,11 @@
 
 **Tech Stack:** `scripts/run_train_planb_init_selfcap.sh`（baseline/确保 Plan‑B init 产物存在），直接调用 trainer 注入 weak-fusion（避免改 init 造成 A/B 混淆），新增一个轻量 mask 变换工具（invert），`scripts/eval_masked_metrics.py`，`pytest`。
 
+**2026-03-04 状态更新（来自 Phase 2 QA，影响 Phase 3 默认选择）：**
+- frozen `q0.995` 下 mask 在 `mask_thr=0.5(=128/255)` 口径非常稀疏，`miou_fg` 近似 0（health-check 不过关不代表 bug，但提示“阈值/语义不匹配”）。
+- 在本 scene 上，`diff` 分支更像“落在人体/运动区域”；`vggt` 分支存在更明显的背景误激活（见 `notes/openproposal_phase2_vggt_pseudomask.md`）。
+- **因此 Phase 3 默认用 `diff q0.950` 做 weak 注入**；`vggt` 路线留作可选对照（不作为默认 gate）。
+
 ---
 
 ### Task 0: Gate Check（确认 Phase 1/2 产物齐全）
@@ -35,8 +40,11 @@ Expected: 全部通过
 
 Run:
 ```bash
-test -f outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3/pseudo_masks.npz
 test -f outputs/cue_mining/openproposal_thuman4_s00_diff_q0.995_ds4_med3/pseudo_masks.npz
+test -f outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3/pseudo_masks.npz
+
+# Phase 3 默认注入用（Phase 2 止损回调产物；若不存在可回退到 q0.995）
+test -f outputs/cue_mining/openproposal_thuman4_s00_diff_q0.950_ds4_med3/pseudo_masks.npz || echo \"[WARN] diff q0.950 missing; fall back to diff q0.995\"
 ```
 
 Expected: 两个文件都存在
@@ -51,6 +59,8 @@ Expected: 两个文件都存在
 **Files:**
 - Create: `scripts/invert_pseudo_masks_npz.py`
 - Test: `scripts/tests/test_invert_pseudo_masks_npz_contract.py`
+
+> 如果仓库中已存在上述两个文件且 `pytest -q scripts/tests/test_invert_pseudo_masks_npz_contract.py -q` 为 PASS，直接跳到 **Task 2**。
 
 **Step 1: 写失败的 contract test**
 
@@ -197,13 +207,13 @@ git commit -m "feat(cue): add invert tool for pseudo_masks.npz"
 - Create: *(none)*
 - Test: *(none)*
 
-**Step 1: 生成 vggt pseudo mask 的 inverted 版本（weak-fusion 用）**
+**Step 1: 生成 diff pseudo mask 的 inverted 版本（weak-fusion 用；Phase 3 默认）**
 
 Run:
 ```bash
 python3 scripts/invert_pseudo_masks_npz.py \
-  --in_npz outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3/pseudo_masks.npz \
-  --out_npz outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3/pseudo_masks_invert_staticness.npz \
+  --in_npz outputs/cue_mining/openproposal_thuman4_s00_diff_q0.950_ds4_med3/pseudo_masks.npz \
+  --out_npz outputs/cue_mining/openproposal_thuman4_s00_diff_q0.950_ds4_med3/pseudo_masks_invert_staticness.npz \
   --overwrite
 ```
 
@@ -245,9 +255,10 @@ KEYFRAME_STEP=5
 PLANB_INIT_NPZ="$REPO_ROOT/outputs/plan_b/$(basename "$DATA_DIR")/init_points_planb_step${KEYFRAME_STEP}.npz"
 test -f "$PLANB_INIT_NPZ"
 
-RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_vggtmaskinv_600"
-PSEUDO_MASK_NPZ="outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3/pseudo_masks_invert_staticness.npz"
-PSEUDO_MASK_WEIGHT=0.3
+RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_diffmaskinv_q0.950_w0.8_600"
+PSEUDO_MASK_NPZ="outputs/cue_mining/openproposal_thuman4_s00_diff_q0.950_ds4_med3/pseudo_masks_invert_staticness.npz"
+# NOTE: Phase 2 显示 mask 值域较低；weight=0.3 基本接近 no-op。这里默认更强的 0.8 以确保 A/B 有信号。
+PSEUDO_MASK_WEIGHT=0.8
 
 CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" default_keyframe_small \
   --data-dir "$DATA_DIR" \
@@ -273,7 +284,7 @@ CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" default_keyframe_sm
 ```
 
 Expected:
-- `.../planb_init_weak_vggtmaskinv_600/stats/test_step0599.json`
+- `.../planb_init_weak_diffmaskinv_q0.950_w0.8_600/stats/test_step0599.json`
 
 **Step 4 (可选，但推荐): control：weak path 但无 cue（zeros mask）**
 
@@ -307,7 +318,7 @@ ZERO_MASK_DIR="outputs/cue_mining/openproposal_thuman4_s00_zeros_ds4"
 # 1) control run
 RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_zeros_600"
 PSEUDO_MASK_NPZ="$ZERO_MASK_DIR/pseudo_masks.npz"
-PSEUDO_MASK_WEIGHT=0.3
+PSEUDO_MASK_WEIGHT=0.8
 
 CUDA_VISIBLE_DEVICES="$GPU" "$VENV_PYTHON" "$TRAINER_SCRIPT" default_keyframe_small \
   --data-dir "$DATA_DIR" \
@@ -385,7 +396,7 @@ VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/p
 
 "$VENV_PYTHON" scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
-  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_vggtmaskinv_600 \
+  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_diffmaskinv_q0.950_w0.8_600 \
   --stage test \
   --step 599 \
   --mask_source dataset \
@@ -397,7 +408,7 @@ Fallback（若本机没有 torch+lpips）：
 ```bash
 python3 scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
-  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_vggtmaskinv_600 \
+  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_diffmaskinv_q0.950_w0.8_600 \
   --stage test \
   --step 599 \
   --mask_source dataset \
@@ -439,7 +450,7 @@ mkdir -p "$OUT_DIR"
 
 bash scripts/make_side_by_side_video.sh \
   "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/videos/traj_4d_step599.mp4" \
-  "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_vggtmaskinv_600/videos/traj_4d_step599.mp4" \
+  "outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_diffmaskinv_q0.950_w0.8_600/videos/traj_4d_step599.mp4" \
   "$OUT_DIR/planb_vs_weak_step599.mp4"
 ```
 
