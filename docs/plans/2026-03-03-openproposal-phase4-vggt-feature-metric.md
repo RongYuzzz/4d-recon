@@ -6,6 +6,9 @@
 
 **Architecture:** 本 Phase 对齐总计划 `docs/plans/2026-03-02-align-opening-proposal-v1.md` 的 Phase 4（不得与其矛盾）。实现顺序写死：**优先跑通 Plan‑B + VGGT feature metric loss（现有脚本）**，再做 1 次小幅迭代（最多改 1 个变量），然后止损。对应可视化复用 `scripts/viz_tokenproj_temporal_topk.py`（从 VGGT cache 画 top‑k token 匹配）。
 
+> 注意：本 Phase 4 的默认跑法只验证 **VGGT feature metric loss**。  
+> Temporal correspondence loss（`lambda_corr/temporal_corr_npz`）默认 **不启用**，因此 TB 里 `loss/corr_raw` 为 0 属于预期，不作为失败证据。
+
 **Tech Stack:** `scripts/run_train_planb_feature_loss_v2_selfcap.sh`, `scripts/precompute_vggt_cache.py`, `scripts/viz_tokenproj_temporal_topk.py`, `scripts/eval_masked_metrics.py`, `pytest`。
 
 **2026-03-04 状态更新（来自 Phase 3，影响 Phase 4 的默认策略）：**
@@ -39,6 +42,29 @@ python3 -c "import importlib.util; import pathlib; p=pathlib.Path('scripts/eval_
 ```
 
 Expected: `ok`
+
+**Step 3（关键公平性 Gate）：锁定 baseline 的 `init_npz_path`（后续 treatment 必须同一份）**
+
+> 经验坑：如果你在 git worktree 里跑脚本，`cfg.yml` 可能把 `init_npz_path` 写成 worktree-local 的绝对路径，导致 baseline/treatment “看起来同名但实际不是同一份 init”。
+
+Run：
+```bash
+BASELINE_CFG="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/cfg.yml"
+test -f "$BASELINE_CFG"
+
+PLANB_INIT_NPZ="$(python3 - <<'PY'
+from pathlib import Path
+p = Path("outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/cfg.yml")
+for line in p.read_text(encoding="utf-8").splitlines():
+  if line.startswith("init_npz_path:"):
+    print(line.split(":", 1)[1].strip())
+    raise SystemExit(0)
+raise SystemExit("missing init_npz_path in baseline cfg.yml")
+PY
+)"
+test -f "$PLANB_INIT_NPZ"
+echo "PLANB_INIT_NPZ=$PLANB_INIT_NPZ"
+```
 
 ---
 
@@ -139,9 +165,12 @@ Expected:
 Run（只改 DATA_DIR/RESULT_DIR，其余先用 conservative defaults；允许你把 GPU 改成空闲卡）：
 ```bash
 DATA_DIR="data/thuman4_subject00_8cam60f" \
-RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600" \
+RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit" \
 GPU=1 MAX_STEPS=600 \
 VENV_PYTHON="${VENV_PYTHON:-$(pwd)/third_party/FreeTimeGsVanilla/.venv/bin/python}" \
+# CRITICAL: force same init_npz_path as baseline (see Task 0 Step 3)
+PLANB_INIT_NPZ="$PLANB_INIT_NPZ" \
+PLANB_OUT_DIR="$(dirname "$PLANB_INIT_NPZ")" \
 VGGT_MODEL_ID="$VGGT_MODEL_ID" \
 VGGT_MODEL_CACHE_DIR="$VGGT_MODEL_CACHE_DIR" \
 VGGT_CACHE_TAG="$VGGT_CACHE_TAG" \
@@ -159,22 +188,32 @@ bash scripts/run_train_planb_feature_loss_v2_selfcap.sh
 ```
 
 Expected:
-- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600/stats/test_step0599.json`
+- `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/stats/test_step0599.json`
 - `outputs/vggt_cache/$VGGT_CACHE_TAG/gt_cache.npz`
 
 **Step 4: 训练完成后，先做最小 sanity（不读大文件）**
 
 Run:
 ```bash
-test -f outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600/cfg.yml
-test -f outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600/stats/test_step0599.json
+test -f outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/cfg.yml
+test -f outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/stats/test_step0599.json
 ```
 
 可选（强烈推荐）：确认 feature loss 确实开启、且 gating 按预期：
 ```bash
 rg -n \"lambda_vggt_feat|vggt_feat_gating|vggt_feat_cache_npz\" \
-  outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600/cfg.yml
+  outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/cfg.yml
 ```
+
+**Step 4.5（关键有效性 Gate）：确认 treatment 的 `init_npz_path` 与 baseline 完全一致**
+
+Run：
+```bash
+echo "[baseline init_npz_path]" && rg -n "^init_npz_path:" outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/cfg.yml
+echo "[treat init_npz_path]" && rg -n "^init_npz_path:" outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/cfg.yml
+```
+
+Expected: 两边路径相同；若不同，则该 treatment run 视为 **confounded**（无效对照），需要重跑 same-init。
 
 ---
 
@@ -221,7 +260,7 @@ VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/p
 
 "$VENV_PYTHON" scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
-  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600 \
+  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit \
   --stage test \
   --step 599 \
   --mask_source dataset \
@@ -233,7 +272,7 @@ Fallback（若本机 venv 没有 torch+lpips）：
 ```bash
 python3 scripts/eval_masked_metrics.py \
   --data_dir data/thuman4_subject00_8cam60f \
-  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600 \
+  --result_dir outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit \
   --stage test \
   --step 599 \
   --mask_source dataset \
@@ -249,8 +288,8 @@ python3 scripts/eval_masked_metrics.py \
 cp outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599.json \
   outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599_phase4.json
 
-cp outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600/stats_masked/test_step0599.json \
-  outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600/stats_masked/test_step0599_phase4.json
+cp outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/stats_masked/test_step0599.json \
+  outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/stats_masked/test_step0599_phase4.json
 ```
 
 **Step 3: Guardrail 检查（tLPIPS 不得显著变差）**
@@ -266,7 +305,7 @@ def load(path: str):
   with open(path, encoding="utf-8") as f:
     return json.load(f)
 b = load("outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats/test_step0599.json").get("tlpips")
-t = load("outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_600/stats/test_step0599.json").get("tlpips")
+t = load("outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit/stats/test_step0599.json").get("tlpips")
 if b is None or t is None:
   raise SystemExit("missing tlpips in one of the stats jsons (check eval_on_test and eval_sample_every_test=1)")
 print("tlpips_baseline", b)
@@ -283,15 +322,15 @@ import json
 from pathlib import Path
 
 baseline = Path("outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600")
-treat = Path("outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600")
+treat = Path("outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_600_sameinit")
 
 def load(p: Path):
   return json.load(open(p, encoding="utf-8"))
 
 bf = load(baseline/"stats/test_step0599.json")
 tf = load(treat/"stats/test_step0599.json")
-bm = load(baseline/"stats_masked/test_step0599.json")
-tm = load(treat/"stats_masked/test_step0599.json")
+bm = load(baseline/"stats_masked/test_step0599_phase4.json")
+tm = load(treat/"stats_masked/test_step0599_phase4.json")
 
 keys_full = ["psnr","ssim","lpips","tlpips"]
 keys_fg = ["psnr_fg","lpips_fg","num_fg_frames"]
@@ -373,10 +412,12 @@ Expected:
 示例（仅示意，按你选的 1 个变量替换）：
 ```bash
 DATA_DIR="data/thuman4_subject00_8cam60f" \
-RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_lam0.005_600" \
+RESULT_DIR="outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_gatediff0.10_lam0.005_600_sameinit" \
 GPU=1 MAX_STEPS=600 \
 LAMBDA_VGGT_FEAT=0.005 \
 VENV_PYTHON="${VENV_PYTHON:-$(pwd)/third_party/FreeTimeGsVanilla/.venv/bin/python}" \
+PLANB_INIT_NPZ="$PLANB_INIT_NPZ" \
+PLANB_OUT_DIR="$(dirname "$PLANB_INIT_NPZ")" \
 VGGT_MODEL_ID="$VGGT_MODEL_ID" \
 VGGT_MODEL_CACHE_DIR="$VGGT_MODEL_CACHE_DIR" \
 VGGT_CACHE_TAG="$VGGT_CACHE_TAG" \
