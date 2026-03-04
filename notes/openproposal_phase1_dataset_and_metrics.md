@@ -3,6 +3,8 @@
 ## Data source and compliance
 
 - Dataset target: THUman4.0 subject-level subset (`subject00`, 8 cameras, 60 frames).
+- Local source used in this run: `data/raw/thuman4/subject00` (camera mapping `cam01..cam08 -> 02..09`).
+- License/compliance: THUman4.0 data follows original dataset terms; this repo only keeps local paths and derived metrics, and does not redistribute raw frames/masks.
 - This phase is **local-eval only**:
   - do not commit THUman frames/masks under `data/`;
   - do not commit run outputs under `outputs/`;
@@ -26,17 +28,22 @@
   5. compute `psnr_fg` and `lpips_fg` on masked crops.
 - Optional `miou_fg` is supported when GT mask + pseudo mask are both available.
 
-## Phase 1 gate status (2026-03-03)
+## Phase 1 gate status (2026-03-04)
 
 - **Code gate (repo-level): PASS**
   - `scripts/adapt_thuman4_release_to_freetime.py` + contract test pass.
   - `scripts/eval_masked_metrics.py` + contract test pass.
   - `docs/protocols/protocol_v3_openproposal.yaml` and COLMAP runbook are in place.
-- **Local THUman smoke gate (dataset/cuda required): PENDING**
-  - Blocker: THUman4.0 local subject path is not present in this workspace session.
-  - To close gate, execute Task 6 run commands from `docs/plans/2026-03-03-openproposal-phase1-dataset-metrics.md` on a machine with local THUman data and GPU training budget.
+- **Local THUman smoke gate (dataset/cuda required): PASS**
+  - Adapted scene: `data/thuman4_subject00_8cam60f` (`images/` + `masks/`, 8 cams × 60 frames).
+  - COLMAP sparse: `data/thuman4_subject00_8cam60f/sparse/0/{cameras.bin,images.bin,points3D.bin}`.
+  - Triangulation smoke: `data/thuman4_subject00_8cam60f/triangulation/points3d_frame000000.npy` (visible-per-frame mode).
+  - Training smoke600 output: `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600`.
+  - Masked eval output: `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600/stats_masked/test_step0599.json`.
+  - Key test metrics (step 599): `psnr=16.1520`, `ssim=0.5621`, `lpips=0.7325`, `tlpips=0.0071`.
+  - Key masked metrics (step 599): `psnr_fg=16.8066`, `lpips_fg=0.0490`, `num_fg_frames=60`.
 
-## Repro checklist to close local smoke gate
+## Repro checklist (completed on 2026-03-04)
 
 1. Adapt THUman subject to `data/thuman4_subject00_8cam60f`.
 2. Build `sparse/0` via reference-frame COLMAP runbook.
