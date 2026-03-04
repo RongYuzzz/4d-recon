@@ -34,6 +34,11 @@ Common eval settings (masked):
 - `bbox_margin_px=32`
 - fill-black mouth/ROI convention from `scripts/eval_masked_metrics.py`
 - `mask_thr=0.5`
+- `lpips_backend=auto` (real LPIPS; executed via FreeTimeGsVanilla venv)
+
+Anti-confound check (init):
+- All three runs use the same `init_npz_path`:
+  - `/root/autodl-tmp/projects/4d-recon/outputs/plan_b/thuman4_subject00_8cam60f/init_points_planb_step5.npz`
 
 ## 2) Full-Frame Metrics (from `stats/test_step0599.json`)
 
@@ -79,4 +84,3 @@ Most likely causes (for Phase 4 follow-up):
 
 Side-by-side (no GT) video:
 - `/root/autodl-tmp/projects/4d-recon/outputs/qualitative_local/openproposal_phase3/planb_vs_weak_step599.mp4`
-
