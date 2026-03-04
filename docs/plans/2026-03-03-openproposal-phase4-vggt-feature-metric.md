@@ -55,6 +55,17 @@ mkdir -p "$VGGT_CACHE_DIR"
 
 **Step 2: 若未 warmup，先做一次最小加载**
 
+推荐优先离线自检；若本机尚无缓存再临时在线一次下载：
+
+离线自检（优先）：
+```bash
+REPO_ROOT="$(pwd)"
+VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
+HF_HUB_OFFLINE=1 HF_HUB_DISABLE_XET=1 \
+"$VENV_PYTHON" -c "from vggt.models.vggt import VGGT; VGGT.from_pretrained('$VGGT_MODEL_ID', cache_dir='$VGGT_MODEL_CACHE_DIR'); print('ok')"
+```
+
+若失败（cache 不完整/不存在）→ 临时在线一次下载：
 ```bash
 REPO_ROOT="$(pwd)"
 VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
