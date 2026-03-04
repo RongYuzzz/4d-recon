@@ -62,7 +62,17 @@ mkdir -p "$VGGT_CACHE_DIR"
 
 **Step 2: 用 venv python 做一次最小加载**
 
-Run（如果首次下载，需要临时在线）：
+Run（推荐优先离线自检；若本机尚无缓存再临时在线一次下载）：
+
+离线自检（优先）：
+```bash
+REPO_ROOT="$(pwd)"
+VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
+HF_HUB_OFFLINE=1 HF_HUB_DISABLE_XET=1 \
+"$VENV_PYTHON" -c "from vggt.models.vggt import VGGT; m=VGGT.from_pretrained('$VGGT_MODEL_ID', cache_dir='$VGGT_CACHE_DIR'); print('ok', type(m))"
+```
+
+若失败（cache 不完整/不存在）→ 临时在线一次下载：
 ```bash
 REPO_ROOT="$(pwd)"
 VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
@@ -116,14 +126,14 @@ Expected:
 
 **Step 3: 跑 vggt backend（主要产物）**
 
-Run（注意传入 cache dir；首次运行若需要下载，确保 `HF_HUB_OFFLINE=0`）：
+Run（注意传入 cache dir；若你已完成 Task 1 的 warmup，建议 `HF_HUB_OFFLINE=1` 保障可复现/不吃网）：
 ```bash
 DATA_DIR="data/thuman4_subject00_8cam60f"
 OUT_DIR="outputs/cue_mining/openproposal_thuman4_s00_vggt1b_depthdiff_q0.995_ds4_med3"
 
 REPO_ROOT="$(pwd)"
 VENV_PYTHON="${VENV_PYTHON:-$REPO_ROOT/third_party/FreeTimeGsVanilla/.venv/bin/python}"
-HF_HUB_OFFLINE=0 HF_HUB_DISABLE_XET=1 \
+HF_HUB_OFFLINE=1 HF_HUB_DISABLE_XET=1 \
 "$VENV_PYTHON" scripts/cue_mining.py \
   --data_dir "$DATA_DIR" \
   --out_dir "$OUT_DIR" \
