@@ -480,3 +480,29 @@ else:
 ---
 
 如需完整可审计证据包（cfg/JSON/视频/可视化 + sha256 manifest），可索取 `expert_diagnosis_pack_2026-03-05_v2.tar.gz`。
+
+---
+
+## Phase 7 addendum (ROI-alignment MVEs, 2026-03-05)
+
+### MVE-1: weak-fusion early-only（no code change）
+
+我们在 `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_staticp99_w0.8_end200_600_r2` 上执行了最小 schedule 验证（`static_from_dynamic_scaled q0.99`, `weight=0.8`, `end_step=200`），并确认 baseline 与 treatment 使用同一 `init_npz_path`（same-init fairness 成立）。
+
+量化结果：guardrail 通过（`ΔtLPIPS=+0.000174`），但核心 ROI 指标失败：`psnr_fg 16.8066 -> 16.4705 (Δ-0.3361)`，`lpips_fg 0.243883 -> 0.254362 (Δ+0.010479)`；并且 `psnr_fg_area/lpips_fg_comp` 与 boundary-band (`psnr_bd_area/lpips_bd_comp`) 同向变差。该模式不是“接近可用的 trade-off”，而是 silhouette ROI 的系统性退化。
+
+因此本轮未触发 `END_STEP=300` 的条件补跑，避免在已失败方向上继续消耗计算预算。
+
+### MVE-2: feature loss with cue-gated silhouette（small code change）
+
+Phase7 已实现 `gating='cue'` 的稠密 silhouette gate，并用 `scripts/tests/test_vggt_feat_cue_gate_downsample.py` 完成 RED→GREEN 验证。实验 run：`outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_cuegate_lam0.005_600_sameinit_r2`；same-init fairness 通过。
+
+监督激活证据来自 TB：`vggt_feat/active` 在 step `0/200/400` 分别为 `19/21/16`（非零）。即“feature loss 没起作用”的解释被排除。尽管如此，ROI 仍失败：`psnr_fg 16.8066 -> 16.4042 (Δ-0.4025)`，`lpips_fg 0.243883 -> 0.256594 (Δ+0.012711)`；边界带也恶化（`Δpsnr_bd_area=-0.2820`, `Δlpips_bd_comp=+0.000294`）。同时全图指标基本中性（`Δpsnr=+0.1624`, `Δlpips=-0.00053`），guardrail 仍通过（`ΔtLPIPS=+0.000405`）。
+
+该结果说明：即使在 oracle-style ROI gating 条件下，feature loss 线路也没有呈现稳定 silhouette ROI 改善。
+
+### Stop/Go
+
+- **Stop（建议）**：两条 MVE（weak early-only / cue-gated feature loss）均未达到 `psnr_fg↑ & lpips_fg↓` 的核心目标。
+- 建议将“止损结论”写入主结论：当前 weak/feat 路线主要表现为 trade-off 调参，尚不具备稳定 ROI 提升能力。
+- **Go 条件（仅保留为未来入口）**：若要继续，应建立新的假设与最小试验（如更强几何约束或边界专用监督），而不是在当前参数族内继续扫描。

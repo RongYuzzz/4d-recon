@@ -395,3 +395,29 @@ for tag in ["vggt_feat/active","loss_weighted/feat","loss/feat_raw"]:
   ev=ea.Scalars(tag); print(tag, [(e.step, float(e.value)) for e in ev])
 PY
 ```
+
+---
+
+## Phase 7 update (2026-03-05): ROI-alignment MVEs
+
+### MVE-1（weak-fusion early-only）
+
+配置：`static_from_dynamic_scaled(q0.99)` + `pseudo_mask_weight=0.8` + `pseudo_mask_end_step=200`，run 为 `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_weak_staticp99_w0.8_end200_600_r2`，并通过 same-init gate（baseline 与 treatment 的 `init_npz_path` 完全一致）。
+
+结果显示 guardrail 通过（`ΔtLPIPS=+0.000174 <= +0.01`），但核心 ROI 目标失败：`Δpsnr_fg=-0.3361`、`Δlpips_fg=+0.010479`；扩展口径 `psnr_fg_area/lpips_fg_comp` 和边界带口径 `psnr_bd_area/lpips_bd_comp` 均同向变差。也即，这条 schedule 在当前条件下不是“轻微 trade-off”，而是 silhouette ROI 的一致性退化。
+
+结论：MVE-1 不支持“弱融合 early-only 可稳定提升 silhouette ROI”的假设；因此未继续执行条件分支 `END_STEP=300`。
+
+### MVE-2（feature loss + cue gating oracle）
+
+在 Phase7 中已实现 `gating='cue'` 为稠密 silhouette gate，并完成 RED→GREEN 合同测试（`scripts/tests/test_vggt_feat_cue_gate_downsample.py`）。实验 run 为 `outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_feat_v2_cuegate_lam0.005_600_sameinit_r2`，same-init gate 通过；TB 标量 `vggt_feat/active` 在 step `0/200/400` 分别为 `19/21/16`（均非 0），证明特征监督确实在工作。
+
+结果同样呈现“全图近中性、ROI 退化”：`Δpsnr=+0.1624`、`Δlpips=-0.00053`，但 `Δpsnr_fg=-0.4025`、`Δlpips_fg=+0.012711`，且边界带指标也变差（`Δpsnr_bd_area=-0.2820`，`Δlpips_bd_comp=+0.000294`）；guardrail 仍通过（`ΔtLPIPS=+0.000405 <= +0.01`）。
+
+结论：即使给 feature loss 提供 oracle-style silhouette gating，仍不能得到 `psnr_fg↑ & lpips_fg↓` 的稳定改进。该结果不支持“Phase4 失败主要由 gating 缺失导致”的单因假设。
+
+### Stop/Go decision
+
+- **Stop（建议止损）**：在 THUman4.0 s00 上，MVE-1 与 MVE-2 均未达成核心 ROI 目标（尽管 guardrail 均通过）。
+- 结论应写死为：当前 weak/feat 两条路线更接近 trade-off 调参，未显示稳定 silhouette ROI 提升能力，不建议继续在这两条线上做大规模扫描。
+- 若后续要继续，仅建议在新的因果假设下小范围重启（例如更强几何先验或明确边界专用监督），而不是延续当前参数族微调。
