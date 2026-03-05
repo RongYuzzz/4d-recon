@@ -91,6 +91,8 @@ def test_eval_masked_metrics_emits_required_fields() -> None:
             "4",
             "--lpips_backend",
             "dummy",
+            "--boundary_band_px",
+            "3",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         assert result.returncode == 0, (
@@ -108,10 +110,14 @@ def test_eval_masked_metrics_emits_required_fields() -> None:
             "lpips_fg",
             "psnr_fg_area",
             "lpips_fg_comp",
+            "psnr_bd_area",
+            "lpips_bd_comp",
+            "boundary_band_px",
             "lpips_backend",
             "mask_source",
         ):
             assert key in obj, f"missing key: {key}"
+        assert obj["boundary_band_px"] == 3
         assert obj["lpips_backend"] in ("auto", "dummy", "none")
         assert obj["mask_source"] == "dataset"
         assert obj["num_fg_frames"] > 0

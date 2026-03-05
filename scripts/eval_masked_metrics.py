@@ -126,6 +126,22 @@ def _bbox_from_mask(mask01: np.ndarray, thr: float, margin: int) -> _BBox | None
     return _BBox(x0=x0, y0=y0, x1=x1, y1=y1)
 
 
+def _boundary_band_keep(mask01: np.ndarray, thr: float, radius_px: int) -> np.ndarray:
+    if radius_px <= 0:
+        return np.zeros_like(mask01, dtype=np.float32)
+    from PIL import ImageFilter  # noqa: PLC0415
+
+    m = (mask01 > float(thr)).astype(np.uint8) * 255
+    img = Image.fromarray(m, mode="L")
+    k = int(radius_px) * 2 + 1
+    dil = img.filter(ImageFilter.MaxFilter(size=k))
+    ero = img.filter(ImageFilter.MinFilter(size=k))
+    dil01 = np.asarray(dil, dtype=np.uint8) > 127
+    ero01 = np.asarray(ero, dtype=np.uint8) > 127
+    band = np.logical_and(dil01, np.logical_not(ero01))
+    return band.astype(np.float32)
+
+
 _RENDER_RE = re.compile(r"^(val|test)_step(\d+)_([0-9]{4})\.png$")
 
 
@@ -170,6 +186,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.5,
         help="Threshold to derive binary mask for bbox+fill-black",
+    )
+    parser.add_argument(
+        "--boundary_band_px",
+        type=int,
+        default=0,
+        help="If >0, also evaluate a boundary band around GT mask with this radius in pixels.",
     )
     parser.add_argument("--lpips_backend", choices=["auto", "dummy", "none"], default="auto")
     parser.add_argument(
@@ -247,6 +269,8 @@ def main() -> int:
     psnr_area_list: list[float] = []
     lpips_list: list[float] = []
     lpips_comp_list: list[float] = []
+    psnr_bd_area_list: list[float] = []
+    lpips_bd_comp_list: list[float] = []
     iou_list: list[float] = []
 
     for frame_idx, render_path in zip(frame_indices, render_files):
@@ -306,6 +330,26 @@ def main() -> int:
         if value_lpips_comp is not None:
             lpips_comp_list.append(float(value_lpips_comp))
 
+        if int(args.boundary_band_px) > 0:
+            band_full = _boundary_band_keep(
+                mask01,
+                thr=float(args.mask_thr),
+                radius_px=int(args.boundary_band_px),
+            )
+            keep_bd = band_full[..., None]
+            bbox_bd = _bbox_from_mask(band_full, thr=0.5, margin=margin)
+            if bbox_bd is not None:
+                gt_bd = gt[bbox_bd.y0 : bbox_bd.y1, bbox_bd.x0 : bbox_bd.x1].copy()
+                pred_bd = pred[bbox_bd.y0 : bbox_bd.y1, bbox_bd.x0 : bbox_bd.x1].copy()
+                keep_bd_crop = keep_bd[bbox_bd.y0 : bbox_bd.y1, bbox_bd.x0 : bbox_bd.x1]
+                gt_bd *= keep_bd_crop
+                pred_bd *= keep_bd_crop
+                psnr_bd_area_list.append(_psnr_mask_area(pred_bd, gt_bd, keep_bd_crop))
+                pred_bd_comp = pred * keep_bd + gt * (1.0 - keep_bd)
+                value_lpips_bd_comp = lpips_fn(pred_bd_comp, gt)
+                if value_lpips_bd_comp is not None:
+                    lpips_bd_comp_list.append(float(value_lpips_bd_comp))
+
         if args.compute_miou:
             if pred_npz is None:
                 _fail("--pred_mask_npz required when --compute_miou")
@@ -334,6 +378,7 @@ def main() -> int:
         "step": step,
         "mask_source": args.mask_source,
         "bbox_margin_px": margin,
+        "boundary_band_px": int(args.boundary_band_px),
         "mask_thr": float(args.mask_thr),
         "lpips_backend": args.lpips_backend,
         "psnr": base_stats.get("psnr", ""),
@@ -344,6 +389,8 @@ def main() -> int:
         "lpips_fg": float(np.mean(lpips_list)) if lpips_list else float("nan"),
         "psnr_fg_area": float(np.nanmean(psnr_area_list)) if psnr_area_list else float("nan"),
         "lpips_fg_comp": float(np.mean(lpips_comp_list)) if lpips_comp_list else float("nan"),
+        "psnr_bd_area": float(np.nanmean(psnr_bd_area_list)) if psnr_bd_area_list else float("nan"),
+        "lpips_bd_comp": float(np.mean(lpips_bd_comp_list)) if lpips_bd_comp_list else float("nan"),
         "num_fg_frames": int(len(psnr_list)),
         "num_frames": int(num_frames),
     }
