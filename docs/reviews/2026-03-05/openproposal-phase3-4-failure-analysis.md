@@ -439,3 +439,12 @@ PY
 - seed44：`Δpsnr_fg=+0.280750`、`Δlpips_fg=+0.000248`、`ΔtLPIPS=+0.001401` → FG fails（只在 `lpips_fg↓` 上失败）
 
 结论：`OVERALL_OK=False`。该设置在 2-seed 复核下呈现 **seed-sensitive / 不稳定**；如果不引入新假设或显著改变监督形式，不建议继续在该参数族内做大规模扫描。
+
+补充（同日最小 weight tune，仍失败）：
+- plan：`docs/plans/2026-03-05-openproposal-preexpert-weight-tune-staticp99.md`
+- note：`notes/openproposal_preexpert_weight_tune_staticp99.md`
+- 仅将 `pseudo_mask_weight` 从 `0.8 -> 0.7`，其余保持一致（baseline 复用，新增两条 treatment）。
+- 结果（treat - base）：
+  - seed43：`Δpsnr_fg=+0.245204`、`Δlpips_fg=-0.007882`、`ΔtLPIPS=+0.000599` → OK
+  - seed44：`Δpsnr_fg=+0.272591`、`Δlpips_fg=+0.001311`、`ΔtLPIPS=+0.000934` → FG fails
+- 结论：`OVERALL_OK=False`；说明“只调 weight”不足以稳定化该 FG 信号，应止损并转入专家诊断/更换假设。

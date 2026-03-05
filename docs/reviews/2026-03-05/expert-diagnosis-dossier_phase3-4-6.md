@@ -529,3 +529,12 @@ Phase7 已实现 `gating='cue'` 的稠密 silhouette gate，并用 `scripts/test
 
 结论：
 - `OVERALL_OK=False`。该“FG win”配置在 2-seed 复核下表现为 **seed-sensitive / 不稳定**，不宜作为稳定改进结论对外陈述。
+
+补充（weight tune）：
+- 计划：`docs/plans/2026-03-05-openproposal-preexpert-weight-tune-staticp99.md`
+- 审计：`notes/openproposal_preexpert_weight_tune_staticp99.md`
+- 只改动 `pseudo_mask_weight: 0.8 -> 0.7`（其余同 seedrep；baseline 复用；新增两条 treatment）。
+- 结果（step=599，treat - base）：
+  - seed43：`Δpsnr_fg=+0.245204`、`Δlpips_fg=-0.007882`、`ΔtLPIPS=+0.000599` → OK
+  - seed44：`Δpsnr_fg=+0.272591`、`Δlpips_fg=+0.001311`、`ΔtLPIPS=+0.000934` → FG fails
+- 结论：`OVERALL_OK=False`；“简单调 weight”不足以把该配置稳定化，继续做 weight 扫描性价比很低。

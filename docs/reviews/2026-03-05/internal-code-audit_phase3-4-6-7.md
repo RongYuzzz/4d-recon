@@ -155,6 +155,21 @@ So `OVERALL_OK=False` under the strict gate. This indicates the positive signal 
 
 ---
 
+## 5.2) Weight Tuning Doesn’t Fix Stability (Still Seed-Sensitive)
+
+We then ran the cheapest possible “mitigation” that does not change any semantics:
+- keep the same pseudo mask (`staticp99`) and schedule (`end_step=600`)
+- only change `pseudo_mask_weight: 0.8 -> 0.7`
+- reuse the already-run baselines for the same seeds, run two new treatments
+
+Result (step=599, treat - base; see `notes/openproposal_preexpert_weight_tune_staticp99.md`):
+- seed43: `Δpsnr_fg=+0.245204`, `Δlpips_fg=-0.007882`, `ΔtLPIPS=+0.000599` → OK
+- seed44: `Δpsnr_fg=+0.272591`, `Δlpips_fg=+0.001311`, `ΔtLPIPS=+0.000934` → FG fails
+
+So `OVERALL_OK=False` again. This reinforces that the issue is not a one-off “bad weight choice”, but a **seed-sensitive trade-off** under this weak-fusion form.
+
+---
+
 ## 6) Remaining “Code-Risk” Items Worth Checking (But Not Proven Broken)
 
 These are the only items that could still be “we implemented it wrong”:
