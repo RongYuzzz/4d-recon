@@ -1,7 +1,7 @@
-# OpenProposal — Phase 3/4 失败分析（Weak Fusion + VGGT Feature Metric on THUman4.0 s00）
+# OpenProposal — Phase 3/4/6 失败分析（Weak Fusion + VGGT Feature Metric + FG Realign Follow-up on THUman4.0 s00）
 
 Date: 2026-03-05 (UTC)  
-Scope: 对 Phase 3（weak-fusion）与 Phase 4（VGGT feature-metric loss）在 THUman4.0 s00 上 **未提升前景指标**（`psnr_fg`/`lpips_fg`）的原因做可审计的 root-cause 分析，并给出下一步可执行的修正方向。  
+Scope: 对 Phase 3（weak-fusion）、Phase 4（VGGT feature-metric loss）以及 Phase 6（FG realign follow-up）在 THUman4.0 s00 上 **未稳定提升前景指标**（`psnr_fg`/`lpips_fg`）的原因做可审计的 root-cause 分析，并给出下一步可执行的修正方向。  
 Evidence: 本文只引用仓库内 **代码片段**与本机 `outputs/`/`data/` 的 **统计结果**；遵守 local-eval 约束（不提交 `data/`/`outputs/`）。  
 
 ---
@@ -10,6 +10,7 @@ Evidence: 本文只引用仓库内 **代码片段**与本机 `outputs/`/`data/` 
 
 - Phase 3 的 weak-fusion 由于 **“mask 语义错位 + invert 后数值饱和（几乎常数）”**，对优化信号几乎不起作用或仅产生局部噪声重权重，导致出现“全图略升但前景退化”的可重复现象。
 - Phase 4 的 VGGT feature-metric loss 在当前实现下属于 **“监督过粗 + gate 过稀疏 + 时序几何先验不足”**：`phi_size=8×9` 且 `top_p=0.10` 使得每次只有 **8 个格子**参与 feature loss，难以改善以 silhouette 为 ROI 的 `psnr_fg/lpips_fg`，反而可能扰动前景细节。
+- Phase 6 follow-up 的结论是“把疑点收敛”：weak-fusion 经 scaling 后不再是 no-op，但其默认设计是 **downweight dynamic**，与 fg 目标存在方向冲突；VGGT feature loss 路径在 `nogate + (ds4/ds2)` 下已证实被激活，但 fg 依旧不稳定胜过 baseline，说明主要问题更像 **信号/ROI 对齐不足**，而不只是实现 bug 或算力问题。
 
 ---
 
@@ -47,6 +48,18 @@ Runs（same-init 有效对照集）：
 详见（已审查文档）：
 - `notes/openproposal_phase4_attention_contrastive.md`
 - `docs/reviews/2026-03-04/openproposal-phase4-review.md`
+
+### 1.3 Phase 6：FG realign follow-up（排障与方向性对照）
+
+目的：把 Phase 3/4 的关键疑点从“算没算/有没有生效”收敛到“信号是否对齐 fg ROI”。Phase 6 主要做了两类 follow-up：
+
+- Phase 3 follow-up：对 pseudo mask 做幅度标定（scaling），验证 weak-fusion 不再是 no-op；并做方向翻转对照（dynamic_scaled vs static_from_dynamic_scaled）。
+- Phase 4 follow-up：先去 gating（`gating=none`），再提高 token grid 分辨率（`phi_size`：`ds4 -> ds2`），验证 feature loss 路径是否确实被激活、以及激活后对 fg 的影响。
+
+Phase 6 的详细数据与结论见本文第 7 节，以及：
+- `docs/reviews/2026-03-05/openproposal-phase6-fg-realign-followup-review.md`
+- `notes/openproposal_phase6_fg_realign_phase3.md`
+- `notes/openproposal_phase6_fg_realign_phase4.md`
 
 ---
 
@@ -231,6 +244,103 @@ TB 复核（以 `planb_feat_v2_gatediff0.10_600_sameinit` 为例）：
 
 ---
 
+## 7) Phase 6 follow-up：把“没稳定达成 fg 目标”的原因收敛到哪里
+
+Phase 6 的定位不是“换一个方法再赌一次”，而是对 Phase 3/4 的关键疑点做排障与方向性实验（timebox=600 steps）：
+
+- Plan: `docs/plans/2026-03-05-openproposal-fg-realign-followup.md`
+- Review: `docs/reviews/2026-03-05/openproposal-phase6-fg-realign-followup-review.md`
+- Notes（结果细节与路径）：`notes/openproposal_phase6_fg_realign_phase3.md`、`notes/openproposal_phase6_fg_realign_phase4.md`
+
+### 7.1 Phase 6 的关键改动（确保结论可归因）
+
+1) **消除 weak-fusion 的 “mask 近似常数 → 近似 no-op”**  
+对 Phase 3 用到的 diff `q0.950` pseudo mask 做幅度标定（percentile scaling）：
+
+- 工具：`scripts/scale_pseudo_masks_npz.py`
+- 产物：`pseudo_masks_dyn_p99.npz` 与 `pseudo_masks_static_from_dyn_p99.npz`
+
+2) **让 fg 评测更“敏感/可解释”**（避免只盯 `psnr_fg/lpips_fg` 时被单点噪声误导）  
+在 `scripts/eval_masked_metrics.py` 增加：
+- `psnr_fg_area`：更像“fg ROI 内的像素能量/面积型”指标
+- `lpips_fg_comp`：comp 口径（与 fill-black/crop 的交互更可控）
+- `lpips_backend`：显式记录 backend（确保是 real LPIPS）
+
+3) **把 mask “可用性”从单一阈值解耦出来**  
+提供阈值 sweep 的体检工具，避免 Phase 2/3 的 `mIoU≈0` 误判：
+- 工具：`scripts/mask_healthcheck_sweep.py`
+
+### 7.2 Phase 6 — Phase 3 follow-up（weak-fusion：scaling + 方向翻转）
+
+Runs（same-init fairness gate 一致）：
+- baseline：`outputs/protocol_v3_openproposal/thuman4_subject00_8cam60f/planb_init_600`
+- dynamic_scaled：`.../planb_init_weak_dynp99_w0.8_600_r1`
+- static_from_dynamic_scaled：`.../planb_init_weak_staticp99_w0.8_600_r1`
+
+关键结果（step=599；来自 `stats/test_step0599.json` 与 `stats_masked/test_step0599.json`）：
+
+| run | psnr | lpips | tlpips | psnr_fg | lpips_fg | psnr_fg_area | lpips_fg_comp |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| baseline | 16.1520 | 0.7325 | 0.007053 | 16.8066 | 0.24388 | 9.8674 | 0.04960 |
+| dyn_p99_w0.8_r1 | 16.3438 | 0.7331 | 0.007187 | 16.5294 | 0.24611 | 9.5901 | 0.05174 |
+| static_p99_w0.8_r1 | 16.2658 | 0.7437 | 0.008740 | 17.1048 | 0.24271 | 10.1655 | 0.05044 |
+
+解释（为什么这组结果能“收敛疑点”）：
+
+- weak-fusion 的真实机制是 **downweight dynamicness**：`w = 1 - α·mask_dyn`（再除以 `mean(w)` 稳定尺度），见 `third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py` 的 weak-fusion 片段（第 2.3 节已摘录）。
+- 因此在 **dynamic_scaled** 下，mask 越“动态/更像人”，权重越小 → 对 fg ROI 的重建信号被压弱，出现 `psnr_fg↓`、`lpips_fg↑` 是符合机制预期的。
+- 而 **static_from_dynamic_scaled** 等价于喂入 `mask_sta = 1 - mask_dyn`：  
+  `w = 1 - α·mask_sta = (1-α) + α·mask_dyn`  
+  归一化后，相当于 **相对 upweight 更动态/更像 fg 的区域**。这与本轮看到的 `psnr_fg↑`、`lpips_fg↓` 一致（但全图 `lpips` 变差，也符合“把优化预算从背景挪向 fg”的 trade-off）。
+
+结论（Phase 3 方向层面）：
+- Phase 3 原版失败并不只因为“没信号/没算”，更关键的是 **方向**：在当前 trainer 里，weak-fusion 的默认设计会压弱动态/fg；要追 fg 指标，至少需要“方向翻转/ROI 对齐”的机制。
+- 同时注意：即便做了 scaling，`static_from_dynamic_scaled` 的 mask 仍偏饱和（见 `notes/openproposal_phase6_fg_realign_phase3.md` 里的均值统计），说明这条路要想“稳定双赢”，仍需要更好的幅度标定与 schedule，而不是单点调参。
+
+### 7.3 Phase 6 — Phase 4 follow-up（VGGT feature loss：nogate + 提高 phi_size）
+
+Runs（same-init fairness gate 一致）：
+- baseline：`.../planb_init_600`
+- nogate + ds4：`.../planb_feat_v2_nogate_lam0.005_600_sameinit_r1`（`phi_size=8×9`）
+- nogate + ds2：`.../planb_feat_v2_ds2_nogate_lam0.005_600_sameinit_r1`（`phi_size=16×18`）
+
+监督路径激活证据（TB 导出 CSV；结论写入 `notes/openproposal_phase6_fg_realign_phase4.md`）：
+- ds4：`vggt_feat/active=72`（与 token grid 一致）
+- ds2：`vggt_feat/active=288`（与 token grid 一致）
+
+关键结果（step=599）：
+
+| run | psnr | lpips | tlpips | psnr_fg | lpips_fg | psnr_fg_area | lpips_fg_comp |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| baseline | 16.1520 | 0.7325 | 0.007053 | 16.8066 | 0.24388 | 9.8674 | 0.04960 |
+| feat_nogate_ds4_r1 | 16.1570 | 0.7314 | 0.007293 | 16.6825 | 0.24208 | 9.7433 | 0.05062 |
+| feat_nogate_ds2_r1 | 16.1195 | 0.7367 | 0.007025 | 16.5078 | 0.24835 | 9.5686 | 0.05087 |
+
+解释（为什么它仍没稳定达成 fg 目标）：
+
+- 本轮已排除“没算/没激活”：`vggt_feat/active` 与 `phi_size` 对齐说明 feature loss 真的在参与优化。
+- 但 nogate/ds2 仍不稳定赢 fg，意味着主因更像是 **feature 监督与 silhouette ROI 的对齐不足**（尤其是边界/细节），以及其对重建目标的干扰可能大于收益。
+- 另一个结构性事实：当前实现中 `gating='cue'` 并未实现，会直接 fallback 到 none（摘录）：
+  ```py
+  # third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py
+  gating_mode = str(cfg.vggt_feat_gating).strip().lower()
+  if gating_mode == "cue":
+      print("[VGGTFeat][WARN] gating='cue' is not implemented. Falling back to none.")
+  ```
+  这解释了为什么 Phase 4 想“用 cue 对齐 fg”的直觉在当前代码里无法成立：缺少一个把 feature loss 投影到 silhouette/fg 的 gate。
+
+结论（Phase 4 边界层面）：
+- 以当前 `token_proj + cosine + lambda=0.005` 的组合，即使做 `nogate`、提高 `phi_size`，也没有形成稳定的 fg 胜出趋势 → Phase 4 在这条配置线上止损是合理的。
+
+### 7.4 Phase 6 之后的“更窄 root-cause 链路”（你现在真正缺的是什么）
+
+Phase 6 把 Phase 3/4 的问题从“实现/配置误差”进一步收敛为：
+
+- **Phase 3：方向性问题是主因之一**。当前 weak-fusion 的默认机制在做 `downweight dynamic`，与“要提升 fg”存在冲突；当你通过 `static_from_dynamic_scaled` 让它等价于“相对 upweight 动态/fg”后，fg 指标出现了更符合预期的变化，但伴随全图代价与稳定性问题（说明还需更好的幅度标定/日程/ROI 对齐）。
+- **Phase 4：不是没激活，而是信号没对齐**。feature loss 算得很“粗/全局”，且缺少 cue/silhouette gate；在时序几何先验很弱（triangulation 仅 frame0，velocities=0）的前提下，更难指望它稳定推动 fg 细节。
+
+---
+
 ## Appendix A) 复核本文关键数值的本机命令（local only）
 
 1) 统计 mask 分布（示例：diff q0.950 + invert）：
@@ -285,10 +395,3 @@ for tag in ["vggt_feat/active","loss_weighted/feat","loss/feat_raw"]:
   ev=ea.Scalars(tag); print(tag, [(e.step, float(e.value)) for e in ev])
 PY
 ```
-
-
-## Follow-up outcome (Phase 6)
-
-- Phase 3 weak-fusion follow-up: scaling removed clear no-op behavior, and `static_from_dynamic_scaled` outperformed `dynamic_scaled` on foreground-local metrics (`psnr_fg`, `lpips_fg`, `psnr_fg_area`) while keeping `ΔtLPIPS` within guardrail (`<= +0.01`).
-- Phase 4 feature-loss follow-up: `gating=none` and `phi_size` increase (`ds4 -> ds2`) both activated the intended supervision path (`vggt_feat/active` matched token grid size), but foreground quality still did not beat baseline consistently.
-- Updated failure boundary: for current `token_proj + cosine + lambda=0.005` settings, even `ds2 + nogate` remains a non-winning treatment for fg ROI; prioritize Phase 3 direction for next iterations and treat Phase 4 as stop-loss at this configuration.
