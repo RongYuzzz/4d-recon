@@ -288,6 +288,19 @@ def _token_proj_project_and_resize(
     return F.interpolate(phi_0, size=(hf, wf), mode="bilinear", align_corners=False)
 
 
+def _vggt_feat_downsample_dense_gate(mask_b1hw: Tensor, hf: int, wf: int) -> Tensor:
+    """Downsample a dense gate mask [B,1,H,W] into feature grid space [B,1,hf,wf]."""
+    if mask_b1hw.dim() != 4 or mask_b1hw.shape[1] != 1:
+        raise ValueError(f"mask_b1hw must be [B,1,H,W], got {tuple(mask_b1hw.shape)}")
+    gate = F.interpolate(
+        mask_b1hw.float(),
+        size=(int(hf), int(wf)),
+        mode="bilinear",
+        align_corners=False,
+    )
+    return gate.clamp(0.0, 1.0)
+
+
 @dataclass
 class Config:
     """
@@ -1927,6 +1940,8 @@ class FreeTime4DRunner:
         self.vggt_feat_token_proj_dim: int = 0
         self.vggt_feat_token_proj_seed: int = 0
         self.vggt_feat_token_proj_w: Optional[torch.Tensor] = None  # [proj_dim, token_dim]
+        self._vggt_feat_cue_gate_cache: Dict[Tuple[int, int], torch.Tensor] = {}
+        self._vggt_feat_warned_missing_cue_mask: bool = False
         self._vggt_feat_warned_non_none_gating: bool = False
         self._vggt_feat_warned_missing_framediff_gate: bool = False
         self._maybe_load_vggt_feat_cache()
@@ -2700,9 +2715,19 @@ class FreeTime4DRunner:
 
         gating_mode = str(cfg.vggt_feat_gating).strip().lower()
         if gating_mode == "cue":
-            if not self._vggt_feat_warned_non_none_gating:
-                print("[VGGTFeat][WARN] gating='cue' is not implemented. Falling back to none.")
-                self._vggt_feat_warned_non_none_gating = True
+            gate_use = self._get_vggt_feat_cue_gate_batch(
+                frame_idx=data["frame_idx"],
+                camera_idx=data["camera_idx"],
+                hf=int(self.vggt_feat_phi_size[0]),
+                wf=int(self.vggt_feat_phi_size[1]),
+            )
+            if gate_use is not None:
+                gate_use = _vggt_feat_downsample_dense_gate(
+                    gate_use,
+                    hf=int(self.vggt_feat_phi_size[0]),
+                    wf=int(self.vggt_feat_phi_size[1]),
+                )
+                weight_map = gate_use if weight_map is None else (weight_map * gate_use)
         elif gating_mode == "framediff":
             if gate_framediff is None:
                 if not self._vggt_feat_warned_missing_framediff_gate:
@@ -2934,6 +2959,46 @@ class FreeTime4DRunner:
             # Soft weights: use bilinear upsampling.
             mask = F.interpolate(mask, size=(height, width), mode="bilinear", align_corners=False)
         return mask
+
+    def _get_vggt_feat_cue_gate_batch(
+        self,
+        frame_idx: Union[Tensor, np.ndarray, List[int]],
+        camera_idx: Union[Tensor, np.ndarray, List[int]],
+        hf: int,
+        wf: int,
+    ) -> Optional[Tensor]:
+        """Load dataset silhouette masks and resize to phi grid as dense gate [B,1,hf,wf]."""
+        cfg = self.cfg
+        frame_idx_t = torch.as_tensor(frame_idx, dtype=torch.long, device="cpu").view(-1)
+        camera_idx_t = torch.as_tensor(camera_idx, dtype=torch.long, device="cpu").view(-1)
+        out: List[torch.Tensor] = []
+        for t_raw, cam_raw in zip(frame_idx_t.tolist(), camera_idx_t.tolist()):
+            t_local = int(t_raw) - int(cfg.start_frame)
+            cam_name = str(self.parser.camera_names[int(cam_raw)])
+            key = (t_local, int(cam_raw))
+            cached = self._vggt_feat_cue_gate_cache.get(key)
+            if cached is None:
+                mask_path = os.path.join(cfg.data_dir, "masks", cam_name, f"{t_local:06d}.png")
+                if not os.path.exists(mask_path):
+                    if not self._vggt_feat_warned_missing_cue_mask:
+                        print(
+                            "[VGGTFeat][WARN] missing cue mask for gating='cue': "
+                            f"{mask_path}. Falling back to none."
+                        )
+                        self._vggt_feat_warned_missing_cue_mask = True
+                    return None
+                from PIL import Image  # noqa: PLC0415
+
+                img = Image.open(mask_path).convert("L").resize(
+                    (int(wf), int(hf)),
+                    resample=Image.Resampling.BILINEAR,
+                )
+                arr = (np.asarray(img, dtype=np.float32) / 255.0).reshape(1, int(hf), int(wf))
+                cached = torch.from_numpy(arr)
+                self._vggt_feat_cue_gate_cache[key] = cached
+            out.append(cached)
+        gate = torch.stack(out, dim=0)
+        return gate.to(device=self.device, dtype=torch.float32).clamp(0.0, 1.0)
 
     def load_checkpoint(self, ckpt_path: str):
         """Load model and optimizer states from checkpoint."""
