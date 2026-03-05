@@ -301,3 +301,182 @@ Phase 结果：
 - `outputs/qualitative_local/openproposal_phase4/tokenproj_topk/*.jpg`
 - `outputs/qualitative_local/openproposal_phase6/tb_scalars/*.csv`
 
+---
+
+## Appendix B) 关键代码摘录（让专家只读本文也能理解机制）
+
+> 说明：以下摘录仅覆盖“直接决定结果走向/口径”的关键片段；更完整上下文请看对应源文件。
+
+### B.1 FG evaluator：`psnr_fg/lpips_fg` 的 ROI 与 fill-black（`scripts/eval_masked_metrics.py`）
+
+关键点：
+
+- 从 concat canvas 中切出 GT|Pred；
+- 用 `mask_source=dataset` 时读取 `masks/*.png`；
+- 用 GT mask 计算 bbox，并在 bbox 内做 fill-black（只保留 ROI 内前景像素）；
+- `miou_fg` 的实现对 GT 与 pred 使用同一个 `mask_thr`（这会导致 pred mask 幅度很低时 mIoU≈0）。
+
+```py
+# scripts/eval_masked_metrics.py (around line ~240)
+canvas = _load_rgb01(render_path)
+width = canvas.shape[1] // 2
+gt = canvas[:, :width, :]
+pred = canvas[:, width:, :]
+
+if args.mask_source == "dataset":
+    mask_path = gt_mask_dir / f"{frame_offset:06d}.png"
+    mask01 = _load_mask01(mask_path)
+else:
+    pred_small = _load_pred_mask_tv(pred_npz, camera=camera, t_local=frame_offset)
+    mask_img = Image.fromarray((pred_small * 255.0).astype(np.uint8), mode="L")
+    mask_img = mask_img.resize((gt.shape[1], gt.shape[0]), resample=Image.Resampling.BILINEAR)
+    mask01 = np.asarray(mask_img, dtype=np.float32) / 255.0
+
+bbox = _bbox_from_mask(mask01, thr=float(args.mask_thr), margin=margin)
+if bbox is None:
+    continue
+
+gt_crop = gt[bbox.y0 : bbox.y1, bbox.x0 : bbox.x1].copy()
+pred_crop = pred[bbox.y0 : bbox.y1, bbox.x0 : bbox.x1].copy()
+mask_crop = mask01[bbox.y0 : bbox.y1, bbox.x0 : bbox.x1]
+keep = (mask_crop > float(args.mask_thr)).astype(np.float32)[..., None]
+gt_crop *= keep
+pred_crop *= keep
+
+psnr_list.append(_psnr(pred_crop, gt_crop))
+value_lpips = lpips_fn(pred_crop, gt_crop)
+if value_lpips is not None:
+    lpips_list.append(float(value_lpips))
+
+if args.compute_miou:
+    gt_bin = mask01 > float(args.mask_thr)
+    pred_small = _load_pred_mask_tv(pred_npz, camera=camera, t_local=frame_offset)
+    pred_img = Image.fromarray((pred_small * 255.0).astype(np.uint8), mode="L")
+    pred_img = pred_img.resize((gt.shape[1], gt.shape[0]), resample=Image.Resampling.BILINEAR)
+    pred01 = np.asarray(pred_img, dtype=np.float32) / 255.0
+    pred_bin = pred01 > float(args.mask_thr)
+    inter = float(np.logical_and(gt_bin, pred_bin).sum())
+    union = float(np.logical_or(gt_bin, pred_bin).sum())
+    if union > 0:
+        iou_list.append(inter / union)
+```
+
+### B.2 Weak-fusion：mask 被解释为 dynamicness 并“降权 dynamic”（`simple_trainer_freetime_4d_pure_relocation.py`）
+
+关键点：
+
+- mask 的语义是 **dynamicness in [0,1]**；
+- `w = 1 - α·mask_dyn`，并且除以 `mean(w)` 保持 loss 尺度稳定；
+- 这对 “mask 近似常数” 极易退化为 near no-op；
+- 也意味着 weak-fusion 的默认设计倾向于 **压弱动态/前景区域的重建监督**。
+
+```py
+# third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py (around line ~3725)
+use_weak_fusion = (
+    self.pseudo_masks is not None
+    and cfg.pseudo_mask_weight > 0.0
+    and cfg.pseudo_mask_end_step > 0
+    and step < cfg.pseudo_mask_end_step
+)
+if use_weak_fusion:
+    mask_batch = self._get_pseudo_mask_batch(
+        frame_idx=data["frame_idx"],
+        camera_idx=data["camera_idx"],
+        height=height,
+        width=width,
+    )  # [B,1,H,W]
+    if mask_batch is not None:
+        # Interpret mask as dynamicness in [0,1], and downweight dynamic pixels:
+        #   w = 1 - alpha * mask, then normalize by mean(w) to keep loss scale stable.
+        alpha = float(cfg.pseudo_mask_weight)
+        alpha = max(0.0, min(1.0, alpha))
+        w = 1.0 - alpha * mask_batch.permute(0, 2, 3, 1)  # [B,H,W,1]
+        weighted_l1_loss = (torch.abs(colors - pixels) * w).mean() / w.mean().clamp(min=1e-6)
+        l1_loss = weighted_l1_loss
+        pseudo_mask_active_ratio = float(mask_batch.mean().item())
+```
+
+### B.3 Phase 6 的“排障证据”为什么可信：TB 标量里有明确 tag
+
+```py
+# third_party/FreeTimeGsVanilla/src/simple_trainer_freetime_4d_pure_relocation.py (around line ~3975)
+if pseudo_mask_active_ratio is not None:
+    self.writer.add_scalar("pseudo_mask/active_ratio", pseudo_mask_active_ratio, step)
+if feat_active > 0:
+    self.writer.add_scalar("vggt_feat/active", feat_active, step)
+```
+
+对应导出产物（在证据包中）：
+
+- `outputs/qualitative_local/openproposal_phase6/tb_scalars/planb_init_weak_dynp99_w0.8_600_r1_tb_scalars.csv`
+- `outputs/qualitative_local/openproposal_phase6/tb_scalars/planb_feat_v2_nogate_lam0.005_600_sameinit_r1_tb_scalars.csv`
+- `outputs/qualitative_local/openproposal_phase6/tb_scalars/planb_feat_v2_ds2_nogate_lam0.005_600_sameinit_r1_tb_scalars.csv`
+
+### B.4 VGGT feature loss：top‑p gate、`gating='cue'` 未实现、active 计数（`simple_trainer_freetime_4d_pure_relocation.py`）
+
+Top‑p mask（注意 `k = ceil(top_p * total)`）：
+
+```py
+# around line ~2594
+def _top_p_mask(self, score_map: Tensor, top_p: float) -> Tensor:
+    bsz, _, hf, wf = score_map.shape
+    total = int(hf * wf)
+    if top_p <= 0.0:
+        return torch.zeros_like(score_map, dtype=torch.float32)
+    if top_p >= 1.0:
+        return torch.ones_like(score_map, dtype=torch.float32)
+    k = max(1, min(total, int(math.ceil(float(top_p) * float(total)))))
+    flat = score_map.reshape(bsz, total)
+    topk_idx = torch.topk(flat, k=k, dim=1, largest=True, sorted=False).indices
+    mask_flat = torch.zeros_like(flat, dtype=torch.float32)
+    mask_flat.scatter_(1, topk_idx, 1.0)
+    return mask_flat.reshape(bsz, 1, hf, wf)
+```
+
+Gate 逻辑（`cue` 未实现会 fallback；`framediff` 会转成 top‑p 二值 mask）：
+
+```py
+# around line ~2701
+gating_mode = str(cfg.vggt_feat_gating).strip().lower()
+if gating_mode == "cue":
+    print("[VGGTFeat][WARN] gating='cue' is not implemented. Falling back to none.")
+elif gating_mode == "framediff":
+    ...
+    gate_mask = self._top_p_mask(gate_use, float(cfg.vggt_feat_gating_top_p))
+    weight_map = gate_mask if weight_map is None else (weight_map * gate_mask)
+```
+
+loss 与 active 的定义（active=weight_map>0 的数量；nogate 时 active=全部 token）：
+
+```py
+# around line ~2745
+if weight_map is None:
+    feat_loss = loss_map.mean()
+    active = int(loss_map.shape[0] * loss_map.shape[-2] * loss_map.shape[-1])
+    return feat_loss, active
+
+w_sum = weight_map.sum()
+feat_loss = (loss_map * weight_map).sum() / w_sum.clamp(min=1e-6)
+active = int((weight_map > 0).sum().item())
+return feat_loss, active
+```
+
+### B.5 Phase 6 的 pseudo-mask scaling（`scripts/scale_pseudo_masks_npz.py`）
+
+目标：把“幅度极低/极稀疏”的 pseudo mask 拉伸到可用范围，避免 weak-fusion 因 mask 近似常数而 no-op，并提供方向翻转对照（`static_from_dynamic_scaled = 1 - dyn_scaled`）。
+
+```py
+# scripts/scale_pseudo_masks_npz.py (around line ~64)
+m01 = _to_float01(masks)
+q = float(np.quantile(m01.reshape(-1), float(args.quantile)))
+denom = q + float(args.eps)
+dyn = np.clip(m01 / denom, 0.0, 1.0).astype(np.float32)
+if args.mode == "dynamic_scaled":
+    out_masks = dyn
+else:
+    out_masks = (1.0 - dyn).astype(np.float32)
+```
+
+---
+
+如需完整可审计证据包（cfg/JSON/视频/可视化 + sha256 manifest），可索取 `expert_diagnosis_pack_2026-03-05_v2.tar.gz`。
