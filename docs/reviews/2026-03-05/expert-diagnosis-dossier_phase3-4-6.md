@@ -506,3 +506,26 @@ Phase7 已实现 `gating='cue'` 的稠密 silhouette gate，并用 `scripts/test
 - **Stop（建议）**：两条 MVE（weak early-only / cue-gated feature loss）均未达到 `psnr_fg↑ & lpips_fg↓` 的核心目标。
 - 建议将“止损结论”写入主结论：当前 weak/feat 路线主要表现为 trade-off 调参，尚不具备稳定 ROI 提升能力。
 - **Go 条件（仅保留为未来入口）**：若要继续，应建立新的假设与最小试验（如更强几何约束或边界专用监督），而不是在当前参数族内继续扫描。
+
+---
+
+## Pre‑Expert addendum (seed replication of the only FG‑win setting, 2026-03-05)
+
+目的：在“不请专家”前，用最小成本验证 Phase6 里唯一观察到的 `psnr_fg↑ & lpips_fg↓` 配置（weak `staticp99 + w0.8`）是否可复现。
+
+计划与审计 note：
+- plan：`docs/plans/2026-03-05-openproposal-preexpert-seedrep-staticp99.md`
+- note：`notes/openproposal_preexpert_seedrep_staticp99.md`（含输入 sha256、4 个 run 路径与逐 seed deltas）
+
+复核设置：
+- 两个新 seed：`43`、`44`
+- 每个 seed 运行 baseline + treatment 一对（共 4 个 600-step run）
+- same-init fairness：baseline 与 treatment 的 `init_npz_path` 完全一致
+- FG gate：`Δpsnr_fg > 0` 且 `Δlpips_fg < 0`，guardrail `ΔtLPIPS <= +0.01`
+
+结果（step=599，treat - base）：
+- seed43：`Δpsnr_fg=+1.619054`、`Δlpips_fg=-0.017309`、`ΔtLPIPS=+0.000795` → **OK**
+- seed44：`Δpsnr_fg=+0.280750`、`Δlpips_fg=+0.000248`、`ΔtLPIPS=+0.001401` → **FG fails**
+
+结论：
+- `OVERALL_OK=False`。该“FG win”配置在 2-seed 复核下表现为 **seed-sensitive / 不稳定**，不宜作为稳定改进结论对外陈述。

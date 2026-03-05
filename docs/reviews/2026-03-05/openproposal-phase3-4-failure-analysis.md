@@ -421,3 +421,21 @@ PY
 - **Stop（建议止损）**：在 THUman4.0 s00 上，MVE-1 与 MVE-2 均未达成核心 ROI 目标（尽管 guardrail 均通过）。
 - 结论应写死为：当前 weak/feat 两条路线更接近 trade-off 调参，未显示稳定 silhouette ROI 提升能力，不建议继续在这两条线上做大规模扫描。
 - 若后续要继续，仅建议在新的因果假设下小范围重启（例如更强几何先验或明确边界专用监督），而不是延续当前参数族微调。
+
+---
+
+## Pre‑Expert update (2026-03-05): seed replication for weak `staticp99 + w0.8`
+
+目的：Phase6 中唯一观察到的 `psnr_fg↑ & lpips_fg↓` 配置（weak `staticp99 + w0.8`）是否只是偶然，还是可复现。
+
+计划与审计：
+- plan：`docs/plans/2026-03-05-openproposal-preexpert-seedrep-staticp99.md`
+- note：`notes/openproposal_preexpert_seedrep_staticp99.md`（含 sha256、路径与逐 seed deltas）
+
+方法：选取两个新 seed（43/44），每个 seed 跑 baseline+treatment 一对（same-init fairness 通过），比较点 `step=599`。核心 gate：`Δpsnr_fg > 0` 且 `Δlpips_fg < 0`；guardrail：`ΔtLPIPS <= +0.01`。
+
+结果（treat - base）：
+- seed43：`Δpsnr_fg=+1.619054`、`Δlpips_fg=-0.017309`、`ΔtLPIPS=+0.000795` → OK
+- seed44：`Δpsnr_fg=+0.280750`、`Δlpips_fg=+0.000248`、`ΔtLPIPS=+0.001401` → FG fails（只在 `lpips_fg↓` 上失败）
+
+结论：`OVERALL_OK=False`。该设置在 2-seed 复核下呈现 **seed-sensitive / 不稳定**；如果不引入新假设或显著改变监督形式，不建议继续在该参数族内做大规模扫描。
