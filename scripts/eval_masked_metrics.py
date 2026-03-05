@@ -36,6 +36,18 @@ def _psnr(a01: np.ndarray, b01: np.ndarray) -> float:
     return 10.0 * math.log10(1.0 / mse)
 
 
+def _psnr_mask_area(pred01: np.ndarray, gt01: np.ndarray, keep01: np.ndarray) -> float:
+    # keep01: [H,W,1] in {0,1}
+    diff = (pred01.astype(np.float32) - gt01.astype(np.float32)) * keep01.astype(np.float32)
+    denom = float(np.sum(keep01)) * 3.0
+    if denom <= 1e-12:
+        return float("nan")
+    mse = float(np.sum(diff * diff) / denom)
+    if mse <= 1e-12:
+        return 99.0
+    return 10.0 * math.log10(1.0 / mse)
+
+
 class _LPIPS:
     def __init__(self, backend: str):
         self.backend = backend
@@ -232,7 +244,9 @@ def main() -> int:
 
     lpips_fn = _LPIPS(args.lpips_backend)
     psnr_list: list[float] = []
+    psnr_area_list: list[float] = []
     lpips_list: list[float] = []
+    lpips_comp_list: list[float] = []
     iou_list: list[float] = []
 
     for frame_idx, render_path in zip(frame_indices, render_files):
@@ -270,6 +284,7 @@ def main() -> int:
                 "(did you downscale masks with images?)"
             )
 
+        keep_full = (mask01 > float(args.mask_thr)).astype(np.float32)[..., None]
         bbox = _bbox_from_mask(mask01, thr=float(args.mask_thr), margin=margin)
         if bbox is None:
             continue
@@ -282,9 +297,14 @@ def main() -> int:
         pred_crop *= keep
 
         psnr_list.append(_psnr(pred_crop, gt_crop))
+        psnr_area_list.append(_psnr_mask_area(pred_crop, gt_crop, keep))
         value_lpips = lpips_fn(pred_crop, gt_crop)
         if value_lpips is not None:
             lpips_list.append(float(value_lpips))
+        pred_comp = pred * keep_full + gt * (1.0 - keep_full)
+        value_lpips_comp = lpips_fn(pred_comp, gt)
+        if value_lpips_comp is not None:
+            lpips_comp_list.append(float(value_lpips_comp))
 
         if args.compute_miou:
             if pred_npz is None:
@@ -315,12 +335,15 @@ def main() -> int:
         "mask_source": args.mask_source,
         "bbox_margin_px": margin,
         "mask_thr": float(args.mask_thr),
+        "lpips_backend": args.lpips_backend,
         "psnr": base_stats.get("psnr", ""),
         "ssim": base_stats.get("ssim", ""),
         "lpips": base_stats.get("lpips", ""),
         "tlpips": base_stats.get("tlpips", ""),
         "psnr_fg": float(np.mean(psnr_list)) if psnr_list else float("nan"),
         "lpips_fg": float(np.mean(lpips_list)) if lpips_list else float("nan"),
+        "psnr_fg_area": float(np.nanmean(psnr_area_list)) if psnr_area_list else float("nan"),
+        "lpips_fg_comp": float(np.mean(lpips_comp_list)) if lpips_comp_list else float("nan"),
         "num_fg_frames": int(len(psnr_list)),
         "num_frames": int(num_frames),
     }
