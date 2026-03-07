@@ -31,6 +31,9 @@ artifacts/meeting_assets/*.tar.gz
 *.tmp
 .tmp_local/
 
+# Local discussion drafts
+opinions-*.md
+
 # Local third-party archives
 third_party/*.tar.gz
 
