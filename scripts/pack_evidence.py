@@ -58,6 +58,28 @@ def _latest_per_run(paths: Iterable[Path], run_from_file: callable, step_from_fi
     return [best[k][1] for k in sorted(best)]
 
 
+def _glob_with_top_level_symlink_dirs(root: Path, pattern: str) -> list[Path]:
+    """
+    pathlib's '**' glob/rglob does not recurse into symlinked directories.
+
+    In worktrees we often symlink `outputs/protocol_v1|protocol_v2|...` to the main workspace.
+    To keep pack generation consistent across worktrees, also search top-level symlink dirs.
+    """
+    matches: list[Path] = []
+    if not root.exists():
+        return matches
+
+    matches.extend(root.glob(pattern))
+    for child in root.iterdir():
+        try:
+            if child.is_symlink() and child.is_dir():
+                matches.extend(child.glob(pattern))
+        except OSError:
+            # Broken symlink or permission issue: ignore.
+            continue
+    return matches
+
+
 def collect_files(repo_root: Path) -> list[Path]:
     files: set[Path] = set()
 
@@ -88,32 +110,34 @@ def collect_files(repo_root: Path) -> list[Path]:
         return sorted(files)
 
     # Config snapshots are a lightweight truth source for every run.
-    files.update(p for p in outputs.glob("**/cfg.yml") if p.is_file())
-    files.update(p for p in outputs.glob("**/cfg_before_resume_from_*.yml") if p.is_file())
+    files.update(p for p in _glob_with_top_level_symlink_dirs(outputs, "**/cfg.yml") if p.is_file())
+    files.update(
+        p for p in _glob_with_top_level_symlink_dirs(outputs, "**/cfg_before_resume_from_*.yml") if p.is_file()
+    )
 
     stats_latest_val = _latest_per_run(
-        outputs.glob("**/stats/val_step*.json"),
+        _glob_with_top_level_symlink_dirs(outputs, "**/stats/val_step*.json"),
         run_from_file=lambda p: p.parent.parent,
         step_from_file=lambda p: _step_from_name(p.name, VAL_PATTERN),
     )
     files.update(p for p in stats_latest_val if p.is_file())
 
     stats_latest_test = _latest_per_run(
-        outputs.glob("**/stats/test_step*.json"),
+        _glob_with_top_level_symlink_dirs(outputs, "**/stats/test_step*.json"),
         run_from_file=lambda p: p.parent.parent,
         step_from_file=lambda p: _step_from_name(p.name, TEST_PATTERN),
     )
     files.update(p for p in stats_latest_test if p.is_file())
-    files.update(p for p in outputs.glob("**/stats/throughput.json") if p.is_file())
+    files.update(p for p in _glob_with_top_level_symlink_dirs(outputs, "**/stats/throughput.json") if p.is_file())
 
     video_latest = _latest_per_run(
-        outputs.glob("**/videos/traj_*.mp4"),
+        _glob_with_top_level_symlink_dirs(outputs, "**/videos/traj_*.mp4"),
         run_from_file=lambda p: p.parent.parent,
         step_from_file=lambda p: _step_from_name(p.name, STEP_PATTERN),
     )
     files.update(p for p in video_latest if p.is_file())
 
-    files.update(p for p in outputs.glob("**/t0_grad.csv") if p.is_file())
+    files.update(p for p in _glob_with_top_level_symlink_dirs(outputs, "**/t0_grad.csv") if p.is_file())
 
     report_pack_dir = outputs / "report_pack"
     if report_pack_dir.exists():
@@ -143,10 +167,15 @@ def collect_files(repo_root: Path) -> list[Path]:
     if corr_dir.exists():
         files.update(p for p in corr_dir.glob("**/viz/*") if p.is_file())
 
-    # Gate framediff visualizations (lightweight, useful for audits).
+    # protocol_v2 qualitative demo: framediff gate overlay comparisons.
+    # Keep this narrowly scoped to avoid pulling in unrelated viz artifacts.
     gate_viz_dir = outputs / "viz" / "gate_framediff"
     if gate_viz_dir.exists():
-        files.update(p for p in gate_viz_dir.rglob("*") if p.is_file())
+        files.update(
+            p
+            for p in gate_viz_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in {".png", ".csv", ".txt"}
+        )
 
     # Plan-B qualitative audit: side-by-side videos and selected frame snapshots.
     qual_dir = outputs / "qualitative" / "planb_vs_baseline"
@@ -158,6 +187,9 @@ def collect_files(repo_root: Path) -> list[Path]:
     filtered = []
     for p in sorted(files):
         rel = p.relative_to(repo_root)
+        # Avoid packing the repo-side snapshot of the tarball manifest (self-referential).
+        if rel.as_posix().startswith("docs/report_pack/") and rel.name == "manifest_sha256.csv":
+            continue
         if any(part in excluded_tokens for part in rel.parts):
             continue
         filtered.append(p)

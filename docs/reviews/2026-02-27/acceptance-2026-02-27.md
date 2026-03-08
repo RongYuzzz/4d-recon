@@ -306,3 +306,35 @@
 ✅ 收口结论（seed44 与噪声带口径）：见 `notes/protocol_v2_planb_feat_smoke200_owner_a.md`。
 
 **验收结论（Owner A GPU0 follow-up）：PASS。**
+
+---
+
+## 10) temporal diagnostics 增补验收（Owner A/B，2026-02-28）
+
+验收目的：确认 stage‑2 的 temporal diagnostics（A: 像素域 temporal diff，B: 感知域 tLPIPS curve）已纳入同一证据链并进入离线包审计。
+
+### 10.1 Intake（新增诊断产物）
+
+✅ A 侧（像素域 temporal diff）：
+- `outputs/report_pack/diagnostics/temporal_diff_planb_init_600_test_step599.csv`
+- `outputs/report_pack/diagnostics/temporal_diff_planb_feat_v2_full600_test_step599.csv`
+- `outputs/report_pack/diagnostics/temporal_diff_delta_planbfeat_minus_planb_test_step599.csv`
+- `outputs/report_pack/diagnostics/temporal_diff_topk_table_planbfeat_minus_planb_test_step599.md`
+
+✅ B 侧（感知域 tLPIPS curve）：
+- `outputs/report_pack/diagnostics/tlpips_curve_planb_init_600_test_step599.csv`
+- `outputs/report_pack/diagnostics/tlpips_curve_planb_feat_v2_full600_test_step599.csv`
+- `outputs/report_pack/diagnostics/tlpips_curve_delta_planbfeat_minus_planb_test_step599.csv`
+- `outputs/report_pack/diagnostics/tlpips_curve_topk_planbfeat_minus_planb_test_step599.md`
+- `notes/protocol_v2_tlpips_curve_diagnostics.md`
+
+### 10.2 Evidence（离线包）
+
+✅ 统一证据包与清单：
+- `outputs/report_pack_2026-02-28.tar.gz`
+- `docs/report_pack/2026-02-27-v2/manifest_sha256.csv`
+
+### 10.3 结论
+
+- temporal diagnostics 增补验收：**PASS**。
+- 当前结论仍为 mixed trend，不触发新增 full600 预算讨论。

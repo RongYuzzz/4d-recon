@@ -65,6 +65,30 @@
    - `outputs/qualitative/planb_vs_baseline/baseline_vs_planbfeat_full600_step599.mp4`
 4. trade-off 口径（短文档，含代表性失败片段）  
    - `notes/protocol_v2_stage2_tradeoff_qual.md`
+5. temporal diagnostics（A/B 联合，frame-pair 锚点）
+   - A 侧像素域 temporal diff：
+     - `outputs/report_pack/diagnostics/temporal_diff_planb_init_600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/temporal_diff_planb_feat_v2_full600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/temporal_diff_delta_planbfeat_minus_planb_test_step599.csv`
+     - `outputs/report_pack/diagnostics/temporal_diff_topk_table_planbfeat_minus_planb_test_step599.md`
+   - B 侧 tLPIPS curve：
+     - `notes/protocol_v2_tlpips_curve_diagnostics.md`
+     - `outputs/report_pack/diagnostics/tlpips_curve_planb_init_600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/tlpips_curve_planb_feat_v2_full600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/tlpips_curve_delta_planbfeat_minus_planb_test_step599.csv`
+     - `outputs/report_pack/diagnostics/tlpips_curve_topk_planbfeat_minus_planb_test_step599.md`
+6. spatial metrics（per-frame GT vs Pred，补充入口）
+   - 诊断说明：`notes/protocol_v2_spatial_metrics_diagnostics.md`
+   - top-k 帧级快照说明：`notes/protocol_v2_spatial_metrics_topk_frames.md`
+   - 指标与可视化：
+     - `outputs/report_pack/diagnostics/spatial_metrics_planb_init_600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/spatial_metrics_planb_feat_v2_full600_test_step599.csv`
+     - `outputs/report_pack/diagnostics/spatial_metrics_delta_planbfeat_minus_planb_test_step599.csv`
+     - `outputs/report_pack/diagnostics/spatial_metrics_topk_planbfeat_minus_planb_test_step599.md`
+     - `outputs/report_pack/diagnostics/spatial_metrics_curve_planb_vs_planbfeat_test_step599.png`
+     - `outputs/report_pack/diagnostics/spatial_metrics_topk_frames_planbfeat_minus_planb_test_step599/README.md`
+   - top-k 快照口径：劣化帧集中在 `52-59`（另含 `frame_0000`），用于解释 MAE 局部劣化并与 `41->42` 时序锚点互补。
+   - 一句话口径：全帧 `PSNR` 有提升，但 `MAE` 在局部区间（52-59）劣化；与 `41->42` 时序锚点结论互补。
 
 ### 动静解耦导出（若已落盘）
 
